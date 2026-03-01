@@ -1,0 +1,40 @@
+meta:
+  jira: APH-XXXX
+  title: ""
+  created: ""
+  status: active
+  owners: []
+  repos_and_paths: {}
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints: {}
+
+decisions: {}
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan: {}
+
+tasks: []
+
+progress:
+  last_update: ""
+  last_agent: ""
+  carryforward: []
+  evidence: []
+  blocking_questions: []

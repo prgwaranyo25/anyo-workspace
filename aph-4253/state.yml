@@ -1,0 +1,558 @@
+meta:
+  jira: APH-4253
+  title: "Azure AD SAML SSO via Firebase/GIP (Popup + PWA + Admin + Backend)"
+  created: "2026-02-20"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyo_web_app: "anyo-web-app/"
+    anyo_pwa_ui: "anyopwaui/"
+    anyo_portal_admin: "anyo-portal/projects/admin/"
+    anyo_backend_api: "anyobackendapi/"
+
+state_yml_hygiene:
+  purpose: >
+    Ralph runs as a stateless autonomous agent; each iteration has fresh context.
+    This file is the only memory source. Keep it accurate, minimal, and actionable.
+  rules:
+    - "Single source of truth: do not duplicate decisions elsewhere; reference this file."
+    - "After meaningful changes, update progress.last_update, progress.last_agent, and touched tasks."
+    - "Never store secrets/tokens/private keys/cert contents/Firebase ID tokens/refresh tokens."
+    - "Never store PII (emails/phones). Use placeholders."
+    - "If blocked: set task status=blocked and add one entry to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence (commands run + results)."
+    - "Keep allowlists + URLs consistent with decisions section."
+
+constraints:
+  auth_flow:
+    - "No embedded WebView"
+    - "System browser only"
+    - "No long-lived tokens in URLs"
+    - "Popup-only SAML login for current implementation"
+  non_goals:
+    - "No Azure/GCP console manual changes in PRs"
+    - "No onboarding UI for new SAML providers beyond partner maintenance"
+  service_provider_constants:
+    sp_entity_id: "https://anyo-2022.firebaseapp.com"
+    acs_url: "https://anyo-2022.firebaseapp.com/__/auth/handler"
+  production_urls:
+    pwa_origin: "https://anyo.app"
+    pwa_base_path: "/app"
+    pwa_auth_path: "/app/auth"
+
+decisions:
+  idp_first: azure
+  popup_only: true
+  future_multi_client: true
+  partner_identifier: "clientCode (admin-managed, required)"
+  saml_config_scope: per-domain
+  provider_per_domain: true
+  provider_id_format: "saml.<clientCode>--<domainSlug>"
+  login_behavior:
+    if_domain_saml_enabled: "force_sso_no_otp_fallback"
+  redirect_loop:
+    description: "Popup-only SAML login from existing auth screen"
+    steps:
+      - "PWA login calls /app/u/auth-mode with email"
+      - "If mode=saml, PWA calls Firebase signInWithPopup with providerId"
+      - "Firebase user is available immediately after popup login"
+      - "Existing auth provider syncs cookie and handles authenticated navigation"
+  idp_initiated_saml:
+    approach: custom_saml_anyobackend
+    library: "@node-saml/node-saml"
+    per_partner: true
+    field: "IPartnerSsoDomain.samlProvider: firebase | anyobackend"
+    routing: "always via auth.anyo.app start.js; start.js routes to Firebase or backend based on samlProvider"
+  anyobackend_sp_constants:
+    sp_entity_id: "https://anyo.app/saml/sp"
+    acs_url: "https://apiv3.anyo.app/auth/saml/acs"
+    login_url: "https://apiv3.anyo.app/auth/saml/login"
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD in these repos. Add or modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with mock-first loop and targeted lint/typecheck only when stable in the repo."
+  base_branch_policy:
+    default_base: "origin/main"
+    note: "Always branch from origin/main for APH-4253 work unless explicitly required otherwise."
+
+  current_checked_out_branches_snapshot:
+    captured: "2026-02-20"
+    anyobackendapi: "aph-4024-gcp-migration"
+    anyopwaui: "aph-3539"
+    anyo-portal: "aph-4110"
+    anyo-web-app: "main"
+    warnings:
+      - "anyopwaui has untracked temp.md; do not commit it"
+
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4253"
+      pr: "PR-Backend"
+    anyo-portal:
+      base: "origin/main"
+      branch: "aph-4253"
+      pr: "PR-Portal"
+    anyo-web-app:
+      base: "origin/main"
+      branch: "aph-4253"
+      pr: "PR-Bridge"
+    anyopwaui:
+      base: "origin/main"
+      branch: "aph-4253"
+      pr: "PR-PWA"
+
+  repo_sync_steps:
+    - "git fetch origin"
+    - "git checkout main"
+    - "git pull --ff-only"
+    - "git checkout -b <branch_plan.*.branch>"
+
+  parallel_tracks:
+    - id: TRACK_BACKEND
+      repos: ["anyobackendapi/"]
+      tasks: ["B1", "B2", "B3", "B4", "B5"]
+      can_run_in_parallel_with: ["TRACK_PWA_SSO", "TRACK_PORTAL_SCAFFOLD"]
+      blocking_outputs_for_others:
+        - "B4 must exist before P1 can wire real auth-mode call"
+        - "B3 must exist before A1 can wire real save calls"
+    - id: TRACK_PWA_SSO
+      repos: ["anyopwaui/"]
+      tasks: ["W1", "W2", "P1", "P2"]
+      dependencies:
+        - "P1 depends_on B4 (auth-mode lookup) for real wiring"
+      allowed_early_work:
+        - "Popup SAML auth flow can be integrated directly into auth screen"
+    - id: TRACK_PORTAL_SCAFFOLD
+      repos: ["anyo-portal/projects/admin/"]
+      tasks: ["A1"]
+      dependencies:
+        - "A1 depends_on B3 for real wiring"
+      allowed_early_work:
+        - "Form/UI model can be built before backend endpoint exists"
+
+  state_yml_write_lock:
+    rule: "Only one agent/session edits aph-4253/state.yml at a time."
+    coordination:
+      - "Parallel agents write findings to aph-4253/notes/<agent>-update.md; a single state maintainer merges into state.yml."
+      - "Every merge into state.yml must keep YAML valid and update progress.last_update + progress.last_agent."
+
+experiments:
+  mock_first:
+    objective: "Validate installed-PWA redirect loop under /app scope before full SAML rollout"
+    status: completed
+    completed_on: "2026-02-20"
+    environments:
+      - "Vercel preview (post-deploy)"
+      - "Production-like domain for final verification"
+    steps:
+      - "From PWA auth screen, tap Company SSO button to /app/sso/saml/start"
+      - "SSO start page redirects back to PWA callback under /app scope"
+      - "PWA callback is reachable from installed PWA context"
+    success_criteria:
+      - "Loop works in browser tab"
+      - "Loop works in installed PWA mode"
+      - "No callback code loss due to middleware redirects"
+  preview_whitelist_runbook:
+    status: planned
+    notes:
+      - "Preview hostnames are generated only after deployment"
+      - "After preview deploy, whitelist PWA preview host in Firebase authorized domains when real SAML redirect is enabled"
+
+data_model_targets:
+  partner:
+    new_fields:
+      - "clientCode: string (admin editable, required)"
+      - "sso.domains: map keyed by domain"
+    sso_domain_entry_fields:
+      - "domain: string"
+      - "enabled: boolean"
+      - "idpType: IdpType enum (AZURE)"
+      - "providerId: string  # saml.<clientCode>--<domainSlug>"
+      - "gipInboundSamlConfigName: string  # projects/*/inboundSamlConfigs/*"
+      - "azure.idpEntityId: string"
+      - "azure.ssoUrl: string"
+      - "azure.certRef: string  # fingerprint/ref only; NOT raw cert"
+    enums:
+      - "AuthMode: OTP | SAML"
+      - "IdpType: AZURE"
+
+backend_api_contracts:
+  admin:
+    - name: UpsertPartnerClientCode
+      method: POST
+      path: "/admin/partners/:partnerId/client-code"
+      auth: "admin + permission"
+      input: "{ clientCode }"
+      output: "{ partnerId, clientCode }"
+    - name: EnableOrUpdateSamlForDomain
+      method: POST
+      path: "/admin/partners/:partnerId/sso/saml/domain"
+      auth: "admin + permission"
+      input: >
+        {
+          domain,
+          enabled,
+          idpType: "azure",
+          clientCode,
+          azure: { idpEntityId, ssoUrl, x509Certificate },
+          signRequest?: boolean
+        }
+      output: >
+        {
+          partnerId,
+          domain,
+          enabled,
+          providerId,
+          inboundSamlConfigName,
+          displayName
+        }
+  app_un_auth:
+    - name: LookupAuthModeByEmail
+      method: GET
+      path: "/app/u/auth-mode"
+      auth: none
+      input: "email query param"
+      output: >
+        {
+          mode: "otp"|"saml",
+          domain,
+          providerId?
+        }
+  mobile_bridge:
+    - name: SsoExchange
+      method: POST
+      path: "/auth/sso/exchange"
+      auth: none
+      input: "{ firebaseIdToken, providerId, state }"
+      output: "{ code, state }"
+      notes: >
+        Verifies Firebase ID token, generates short-lived one-time code (TTL 120s)
+        stored in SSO_EXCHANGE_CACHE. Code is single-use.
+    - name: SsoRedeem
+      method: POST
+      path: "/auth/sso/redeem"
+      auth: none
+      input: "{ code, state }"
+      output: "{ token }"
+      notes: >
+        Validates code + state, deletes code immediately (single-use),
+        issues Firebase custom token for the authenticated uid.
+
+gcp_identity_platform:
+  api:
+    base: "https://identitytoolkit.googleapis.com"
+    resource: "admin/v2/projects/*/inboundSamlConfigs"
+    method_create: "POST /admin/v2/{parent=projects/*}/inboundSamlConfigs?inboundSamlConfigId=<id>"
+    permissions_needed:
+      - "firebaseauth.configs.update"
+  inbound_saml_config_shape:
+    fields:
+      - enabled
+      - displayName
+      - idpConfig.idpEntityId
+      - idpConfig.ssoUrl
+      - idpConfig.idpCertificates[].x509Certificate
+      - idpConfig.signRequest
+      - "spConfig.spEntityId = https://anyo-2022.firebaseapp.com"
+      - "spConfig.callbackUri = https://anyo-2022.firebaseapp.com/__/auth/handler"
+
+tasks:
+  - id: B1
+    repo: anyobackendapi
+    title: "Add Partner.clientCode + per-domain SSO mapping model"
+    status: completed
+    files_hint:
+      - "anyobackendapi/src/core/models/IPartner.ts"
+      - "Any Partner persistence model/schema file"
+    acceptance:
+      - "Partner supports clientCode"
+      - "Partner supports sso.domains map entries (enabled/idp/providerId/config refs)"
+      - "Validation: clientCode safe for providerId segment"
+
+  - id: B2
+    repo: anyobackendapi
+    title: "Implement GIP inboundSamlConfigs create/patch"
+    status: completed
+    depends_on:
+      - B1
+    acceptance:
+      - "Create config using inboundSamlConfigId=<clientCode>--<domainSlug>"
+      - "providerId computed as saml.<clientCode>--<domainSlug>"
+      - "Store returned inboundSamlConfigName on partner domain entry"
+      - "Patch updates idpConfig + enabled without recreating when exists"
+      - "No cert content persisted in logs"
+
+  - id: B3
+    repo: anyobackendapi
+    title: "Admin endpoints: upsert clientCode + enable SAML per domain"
+    status: completed
+    depends_on:
+      - B1
+      - B2
+    acceptance:
+      - "Secured with AdminManagePartner (or new permission)"
+      - "Domain must exist in partner.whitelistedDomains"
+      - "Validates Azure fields + certificate format"
+      - "Returns providerId + config name"
+
+  - id: B4
+    repo: anyobackendapi
+    title: "Un-auth lookup endpoint: email -> auth mode (otp vs saml)"
+    status: completed
+    depends_on:
+      - B1
+    acceptance:
+      - "Given email, returns mode=otp|saml"
+      - "If saml: returns providerId"
+      - "No user enumeration beyond domain-level decision"
+
+  - id: B5
+    repo: anyobackendapi
+    title: "Deprecated: remove SSO handoff exchange/redeem endpoints"
+    status: completed
+    depends_on:
+      - B2
+    acceptance:
+      - "/auth/sso/exchange removed"
+      - "/auth/sso/redeem removed"
+      - "PWA uses Firebase popup user directly in existing auth flow"
+
+  - id: A1
+    repo: anyo-portal/projects/admin
+    title: "Admin UI: partner clientCode + per-domain SAML (Azure) config form"
+    status: completed
+    depends_on:
+      - B3
+    acceptance:
+      - "Partner edit UI supports setting clientCode"
+      - "Per-domain selection (from whitelistedDomains) + enable switch"
+      - "Azure fields: Entra Identifier, Login URL, cert upload"
+      - "Calls backend and shows success/providerId"
+
+  - id: W1
+    repo: anyopwaui
+    title: "PWA SSO entry integrated directly into existing auth flow"
+    status: completed
+    acceptance:
+      - "After auth-mode lookup mode=saml, PWA calls signInWithPopup with providerId"
+      - "Popup result returns Firebase user without extra bridge page"
+      - "Uses existing auth provider + handleAuthNavigation flow"
+
+  - id: W2
+    repo: anyopwaui
+    title: "Deprecated: SSO start page callback/exchange flow removed"
+    status: completed
+    depends_on:
+      - W1
+    acceptance:
+      - "No dedicated /auth/sso/saml/start page"
+      - "No backend exchange handoff in active flow"
+
+  - id: P1
+    repo: anyopwaui
+    title: "PWA auth: corporate email entry + lookup for saml/otp decision"
+    status: completed
+    depends_on:
+      - B4
+    acceptance:
+      - "After email input, calls /app/u/auth-mode"
+      - "If mode=saml: uses Firebase signInWithPopup(providerId)"
+      - "If mode=otp: uses existing OTP flow"
+
+  - id: P2
+    repo: anyopwaui
+    title: "Deprecated: callback redeem/sign-in flow removed"
+    status: completed
+    depends_on:
+      - P1
+    acceptance:
+      - "No /app/auth/sso/callback route in active flow"
+      - "SAML login completes directly via Firebase popup result"
+
+  - id: M1
+    repo: anyobackendapi
+    title: "SSO exchange + redeem endpoints for mobile bridge"
+    status: completed
+    files:
+      - "src/common/anyoCache/anyoCacheService.ts  (added SSO_EXCHANGE_CACHE namespace)"
+      - "src/core/service/ssoExchangeService.ts  (new)"
+      - "src/core/handlers/sso-handler.ts  (new)"
+      - "src/core/routes/index.ts  (added POST /auth/sso/exchange and POST /auth/sso/redeem)"
+    acceptance:
+      - "POST /auth/sso/exchange: verifies Firebase ID token, returns one-time code (TTL 120s)"
+      - "POST /auth/sso/redeem: validates code+state, issues Firebase custom token"
+      - "Code is single-use (deleted on first redeem)"
+      - "TypeScript compiles clean; ESLint passes"
+
+  - id: M2
+    repo: anyo-web-app
+    title: "SAML web bridge landing page at /sso/saml/start"
+    status: completed
+    files:
+      - "src/pages/sso/saml/start.tsx  (new)"
+    acceptance:
+      - "Page drives Firebase signInWithRedirect SAML flow"
+      - "On redirect return: exchanges ID token for one-time code, redirects to linkingUri"
+      - "Validates providerId (must start with saml.) and linkingUri (allowlist)"
+      - "TypeScript compiles clean"
+
+  - id: D1
+    repo: all
+    title: "Docs + test steps + known limitations"
+    status: todo
+    acceptance:
+      - "README notes per PR: env vars, URLs, how to test"
+      - "Test: happy path, cancel, invalid provider, invalid returnTo, repeat sign-in"
+      - "List follow-ups (new IdPs, onboarding, hardening)"
+
+  - id: I1
+    repo: anyobackendapi
+    title: "Install @node-saml/node-saml + create CustomSamlService"
+    status: completed
+    acceptance:
+      - "@node-saml/node-saml installed"
+      - "customSamlService.ts: getAuthRequestUrl(providerId), parseAssertion(samlResponse, providerId), parseAssertionByIssuer(samlResponse)"
+      - "TypeScript compiles clean"
+
+  - id: I2
+    repo: anyobackendapi
+    title: "SAML session cache + createCodeForUid in ssoExchangeService"
+    status: completed
+    depends_on: [I1]
+    acceptance:
+      - "SAML_SESSION_CACHE namespace added to AnyoCacheNameSpace"
+      - "customSamlSessionService.ts: save/get/delete session by requestId (10 min TTL)"
+      - "ssoExchangeService.ts: createCodeForUid(uid, providerId, state) added"
+      - "Single-use code deletion re-enabled in redeemCode()"
+
+  - id: I3
+    repo: anyobackendapi
+    title: "Custom SAML route handlers + routes"
+    status: completed
+    depends_on: [I1, I2]
+    acceptance:
+      - "samlLoginGetHandler: GET /auth/saml/login -> generates SAMLRequest, stores session, 302 to IdP"
+      - "samlAcsPostHandler: POST /auth/saml/acs -> validates assertion, creates code, redirects to linkinguri?code=xxx"
+      - "IDP-initiated: lookup by Issuer; SP-initiated: lookup by requestId from RelayState"
+      - "Routes registered in index.ts"
+      - "TypeScript + ESLint clean"
+
+  - id: I4
+    repo: anyobackendapi
+    title: "Update IPartner model + partnerService + admin handler"
+    status: completed
+    depends_on: [I1]
+    acceptance:
+      - "IPartnerSsoDomain.samlProvider?: 'firebase' | 'anyobackend' added"
+      - "getAuthModeByEmail returns samlProvider"
+      - "upsertPartnerSsoDomain accepts + stores samlProvider"
+      - "findSsoDomainByIdpEntityId() for IDP-initiated issuer lookup"
+      - "admin handler passes samlProvider through"
+
+  - id: I5
+    repo: anyoauth
+    title: "start.js: route anyobackend SAML to backend login endpoint"
+    status: completed
+    acceptance:
+      - "samlProvider query param read and persisted in sessionStorage"
+      - "If samlProvider=anyobackend: window.location.replace to apiv3.anyo.app/auth/saml/login"
+      - "Firebase flow unchanged when samlProvider=firebase or missing"
+
+  - id: I6
+    repo: anyopwaui
+    title: "PWA: handle ?code= on app load (IDP-initiated callback)"
+    status: completed
+    acceptance:
+      - "authProvider detects ?code= + ?state= on mount"
+      - "Calls /auth/sso/redeem -> signInWithCustomToken"
+      - "URL params cleared after redemption"
+      - "No double-trigger if firebaseUser already set"
+
+  - id: I7
+    repo: anyopwaui
+    title: "PWA: pass samlProvider to auth.anyo.app start URL"
+    status: completed
+    depends_on: [I4]
+    acceptance:
+      - "fetchSsoAuthModeByEmail response type includes samlProvider"
+      - "signInWithSSO passes samlProvider param to auth.anyo.app"
+
+  - id: I8
+    repo: anyo-portal/projects/admin
+    title: "Admin UI: samlProvider field in SAML config form"
+    status: completed
+    depends_on: [I4]
+    acceptance:
+      - "Radio/select for Firebase vs Anyo Backend SAML"
+      - "Shows correct SP entity ID + ACS URL for selected provider"
+      - "Passes samlProvider in upsert request"
+
+progress:
+  last_update: "2026-03-01"
+  last_agent: "claude-sonnet-4-6"
+  carryforward:
+    - "IDP-initiated custom SAML planned: @node-saml/node-saml in anyobackendapi, per-partner samlProvider field, auth.anyo.app routes to backend for anyobackend providers"
+    - "Refactored backend IPartner.ssoDomains from array to Record<string, IPartnerSsoDomain> map keyed by domain"
+    - "Added AuthMode and IdpType enums to backend models and updated all usages"
+    - "Changed /app/u/auth-mode from POST to GET with email query param"
+    - "Updated PWA fetchSsoAuthModeByEmail to use GET with query params"
+    - "Switched architecture to popup-only SAML login integrated into existing auth flow"
+    - "Removed PWA SSO start/callback pages and backend exchange/redeem dependency"
+    - "Removed backend /auth/sso/exchange and /auth/sso/redeem routes/handlers"
+  evidence:
+    - "Added execution.branch_plan + parallel_tracks + write-lock guidance"
+    - "Updated branch plan to branch name aph-4253 for all repos"
+    - "Added experiments section for mock-first and preview-domain whitelist runbook"
+    - "Updated development guidance: no TDD workflow unless explicitly requested"
+    - "Temporarily relaxed bridge provider/returnTo validation for mock-first preview testing"
+    - "Updated architecture to PWA-scoped SSO start URL: /app/sso/saml/start (installed iOS PWA compatibility)"
+    - "Moved mock-first SSO start route to anyopwaui: /app/sso/saml/start"
+    - "Added login button: Continue with Company SSO -> /app/sso/saml/start?provider=saml.anyo-demo-sso"
+    - "Removed temporary anyo-web-app SSO scaffold files"
+    - "Mock-first verified working in installed PWA context; started removing mock-specific code paths"
+    - "W1 completed in anyopwaui with real Firebase SAML redirect skeleton under /app/sso/saml/start"
+    - "W2/P2 wired to backend exchange/redeem endpoints and now depend on backend B5 availability"
+    - "Implemented backend B1-B5 code paths (partner SSO model, GIP inbound SAML upsert, admin SSO config endpoints, auth-mode lookup, exchange/redeem)"
+    - "Verified backend changed files with eslint + TypeScript compile (`pnpm exec eslint ...`, `pnpm exec tsc -p tsconfig.json --noEmit`)"
+    - "Updated PWA auth flow to use /app/sso/saml/start from auth-mode lookup and removed hardcoded demo SSO button redirect"
+    - "Verified PWA changed files with eslint + TypeScript compile (`pnpm exec eslint ...`, `pnpm exec tsc --noEmit`)"
+    - "Verified portal changed files with eslint (`npx eslint projects/admin/src/app/models/IPartner.ts projects/admin/src/app/services/partner.service.ts`)"
+    - "Hardened W2/P2 in anyopwaui with SSO context TTL checks, provider/context validation, cancel/expired error handling, and callback duplicate-handling fixes"
+    - "Implemented A1 in admin partner UI (clientCode + domain selection + Azure SAML fields + save action to new backend endpoints with provider/config success feedback)"
+    - "Verified anyopwaui SSO updates with lint + typecheck (`pnpm exec eslint src/app/sso/saml/start/page.tsx src/app/auth/sso/callback/page.tsx`, `pnpm exec tsc --noEmit`)"
+    - "Verified anyo-portal admin app compiles after A1 changes (`npx ng build --project admin`)"
+    - "Integrated corporate SAML login into existing PWA email auth flow via Firebase signInWithPopup (no dedicated SSO page navigation)"
+    - "Deleted PWA routes /app/auth/sso/saml/start and /app/auth/sso/callback plus exchange/redeem client service methods"
+    - "Deleted backend auth handlers/routes for /auth/sso/exchange and /auth/sso/redeem"
+    - "Verified anyopwaui and anyobackendapi with typecheck + targeted eslint (`pnpm exec tsc --noEmit`, `pnpm exec tsc -p tsconfig.json --noEmit`, targeted eslint on touched files)"
+    - "Normalized state.yml to popup-only architecture and removed stale bridge/callback dependency references"
+  evidence:
+    - "Checked out anyobackendapi to aph-4253 branch"
+    - "Added SSO_EXCHANGE_CACHE namespace to AnyoCacheService"
+    - "Created src/core/service/ssoExchangeService.ts: exchangeFirebaseToken + redeemCode"
+    - "Created src/core/handlers/sso-handler.ts: ssoExchangePostHandler + ssoRedeemPostHandler"
+    - "Registered POST /auth/sso/exchange and POST /auth/sso/redeem in src/core/routes/index.ts"
+    - "Created src/pages/sso/saml/start.tsx in anyo-web-app: Firebase signInWithRedirect bridge page"
+    - "Verified anyobackendapi with pnpm exec tsc --noEmit + pnpm exec eslint (clean)"
+    - "Verified anyo-web-app with pnpm exec tsc --noEmit (clean)"
+    - "Implemented IDP-initiated SAML: @node-saml/node-saml installed, customSamlService.ts, customSamlSessionService.ts, custom-saml-handler.ts created in anyobackendapi"
+    - "Added SAML_SESSION_CACHE to AnyoCacheNameSpace, createCodeForUid to ssoExchangeService, re-enabled single-use code deletion"
+    - "Added GET /auth/saml/login and POST /auth/saml/acs routes; ACS handles both SP-initiated (requestId in RelayState) and IDP-initiated (Issuer lookup)"
+    - "Added samlProvider field to IPartnerSsoDomain; upsertPartnerSsoDomain skips GIP for anyobackend, stores x509Certificate for assertion validation"
+    - "Added findSsoDomainByIdpEntityId + getPartnerSsoDomainByProviderId to partnerService; getAuthModeByEmail returns samlProvider"
+    - "Updated anyoauth start.js: reads samlProvider param, routes anyobackend to apiv3.anyo.app/auth/saml/login"
+    - "Updated anyopwaui authProvider.tsx: detects ?code=+?state= on mount for IDP-initiated, redeems via ssoRedeemCode, clears URL params"
+    - "Updated anyopwaui AuthComponents.tsx: signInWithSSO passes samlProvider to auth.anyo.app; SsoAuthModeResponse includes samlProvider"
+    - "Updated anyo-portal admin: ssoSamlProvider radio in SAML form, shows SP constants per provider, passes samlProvider in upsert"
+    - "Verified anyobackendapi with pnpm exec tsc -p tsconfig.json --noEmit (clean) and pnpm exec eslint on changed files (clean)"
+    - "Verified anyopwaui with pnpm run lint (clean)"
+  blocking_questions:
+    - "Real Azure/GIP configuration and full end-to-end runtime validation (installed iOS PWA + production IdP config) still pending outside code changes."
+    - "anyocustomerapp (M3) integration not yet started: needs WebBrowser.openAuthSessionAsync call + deep link handler + signInWithCustomToken"

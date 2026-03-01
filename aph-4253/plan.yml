@@ -1,0 +1,110 @@
+feature: IDP-Initiated Custom SAML Login
+ticket: APH-4253
+created: "2026-03-01"
+status: implemented
+
+problem: >
+  Firebase Auth SAML only supports SP-initiated flows. Gmail workspace app tiles
+  trigger true IDP-initiated SAML (Azure posts assertion directly to ACS URL).
+  Firebase throws "missing initial state" and cannot handle this flow.
+
+solution: >
+  Custom SAML handler in anyobackendapi using @node-saml/node-saml with its own
+  ACS URL. Per-partner samlProvider field decides Firebase vs custom backend SAML.
+  Auth routing always via auth.anyo.app which routes based on samlProvider param.
+
+sp_constants:
+  entity_id: "https://anyo.app/saml/sp"
+  acs_url: "https://apiv3.anyo.app/auth/saml/acs"
+  login_url: "https://apiv3.anyo.app/auth/saml/login"
+
+flows:
+  idp_initiated:
+    trigger: "User clicks Gmail workspace app tile"
+    path:
+      - "Azure POSTs SAMLResponse to https://apiv3.anyo.app/auth/saml/acs"
+      - "Backend finds partner domain by Issuer (azure.idpEntityId match)"
+      - "Backend validates assertion, looks up Anyo user by email"
+      - "Backend creates short-lived code, redirects to https://anyo.app/app?code=xxx&state=idp_initiated"
+      - "PWA detects ?code= on mount, redeems -> Firebase custom token -> signInWithCustomToken"
+
+  sp_initiated_anyobackend:
+    trigger: "User enters email, backend returns samlProvider=anyobackend"
+    path:
+      - "PWA opens popup to auth.anyo.app/sso/saml/start?providerId=xxx&samlProvider=anyobackend"
+      - "start.js redirects to https://apiv3.anyo.app/auth/saml/login?providerId=xxx&state=xxx&linkinguri=xxx"
+      - "Backend generates SAMLRequest, saves session, 302 to Azure"
+      - "Azure authenticates, POSTs to ACS with RelayState={requestId}"
+      - "Backend validates, creates code, redirects to linkinguri?code=xxx"
+      - "Popup postMessages back to PWA, PWA redeems code -> signInWithCustomToken"
+
+  sp_initiated_firebase:
+    trigger: "User enters email, backend returns samlProvider=firebase (default)"
+    path:
+      - "Existing popup flow unchanged"
+      - "auth.anyo.app/sso/saml/start does Firebase signInWithRedirect/popup"
+
+azure_config_per_partner_anyobackend:
+  reply_url_acs: "https://apiv3.anyo.app/auth/saml/acs"
+  identifier_entity_id: "https://anyo.app/saml/sp"
+  sign_on_url: "https://apiv3.anyo.app/auth/saml/login?providerId=saml.<clientCode>--<domainSlug>"
+  relay_state_idp_initiated: '{"linkinguri":"https://anyo.app","state":"idp_initiated"}'
+
+tasks:
+  - id: I1
+    title: "Install @node-saml/node-saml + CustomSamlService"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/common/auth/customSamlService.ts (new)"
+  - id: I2
+    title: "SAML session cache + createCodeForUid"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/common/anyoCache/anyoCacheService.ts (SAML_SESSION_CACHE added)"
+      - "src/core/service/customSamlSessionService.ts (new)"
+      - "src/core/service/ssoExchangeService.ts (createCodeForUid added, deletion re-enabled)"
+  - id: I3
+    title: "Custom SAML route handlers (GET /auth/saml/login, POST /auth/saml/acs)"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/core/handlers/custom-saml-handler.ts (new)"
+      - "src/core/routes/index.ts (routes registered)"
+  - id: I4
+    title: "IPartner model + partnerService + admin handler updates"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/core/models/IPartner.ts (samlProvider + x509Certificate added)"
+      - "src/core/service/partnerService.ts (samlProvider in getAuthModeByEmail + upsert, findSsoDomainByIdpEntityId, getPartnerSsoDomainByProviderId)"
+      - "src/core/handlers/admin-handler.ts (samlProvider in UpsertPartnerSsoDomainRequest)"
+  - id: I5
+    title: "start.js: route anyobackend SAML to backend"
+    repo: anyoauth
+    status: completed
+    files:
+      - "public/sso/saml/start/start.js (samlProvider param read + anyobackend routing)"
+  - id: I6
+    title: "PWA: handle ?code= on app load"
+    repo: anyopwaui
+    status: completed
+    files:
+      - "src/hooks/common/authProvider.tsx (IDP-initiated code handler useEffect)"
+  - id: I7
+    title: "PWA: pass samlProvider to auth.anyo.app"
+    repo: anyopwaui
+    status: completed
+    files:
+      - "src/components/auth/AuthComponents.tsx (signInWithSSO passes samlProvider)"
+      - "src/services/userService.ts (SsoAuthModeResponse includes samlProvider)"
+  - id: I8
+    title: "Admin UI: samlProvider in SAML config form"
+    repo: anyo-portal/projects/admin
+    status: completed
+    files:
+      - "src/app/models/IPartner.ts (samlProvider field)"
+      - "src/app/pages/partner/add/add.component.ts (ssoSamlProvider state)"
+      - "src/app/pages/partner/add/add.component.html (radio buttons + SP info)"
+      - "src/app/services/partner.service.ts (samlProvider in request type)"
