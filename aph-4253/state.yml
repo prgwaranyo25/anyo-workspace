@@ -1,6 +1,6 @@
 meta:
   jira: APH-4253
-  title: "Azure AD SAML SSO via Firebase/GIP (Popup + PWA + Admin + Backend)"
+  title: "SAML SSO via Firebase + Anyo Backend (PWA + Customer App + Auth + Admin + Backend)"
   created: "2026-02-20"
   status: active
   owners:
@@ -10,6 +10,8 @@ meta:
     anyo_pwa_ui: "anyopwaui/"
     anyo_portal_admin: "anyo-portal/projects/admin/"
     anyo_backend_api: "anyobackendapi/"
+    anyo_auth: "anyoauth/"
+    anyo_customer_app: "anyocustomerapp/"
 
 state_yml_hygiene:
   purpose: >
@@ -29,7 +31,9 @@ constraints:
     - "No embedded WebView"
     - "System browser only"
     - "No long-lived tokens in URLs"
-    - "Popup-only SAML login for current implementation"
+    - "Auth broker remains auth.anyo.app for both Firebase and Anyobackend SP flows"
+    - "Anyobackend SP flow must round-trip back to auth.anyo.app before final app deep-link/web callback"
+    - "IdP-initiated SSO is web/PWA-first; mobile deep-link requires app-initiated flow via auth broker session"
   non_goals:
     - "No Azure/GCP console manual changes in PRs"
     - "No onboarding UI for new SAML providers beyond partner maintenance"
@@ -43,12 +47,13 @@ constraints:
 
 decisions:
   idp_first: azure
-  popup_only: true
+  popup_only: false
   future_multi_client: true
   partner_identifier: "clientCode (admin-managed, required)"
   saml_config_scope: per-domain
   provider_per_domain: true
   provider_id_format: "saml.<clientCode>--<domainSlug>"
+  dual_sp_support: true
   login_behavior:
     if_domain_saml_enabled: "force_sso_no_otp_fallback"
   redirect_loop:
@@ -62,8 +67,18 @@ decisions:
     approach: custom_saml_anyobackend
     library: "@node-saml/node-saml"
     per_partner: true
-    field: "IPartnerSsoDomain.samlProvider: firebase | anyobackend"
-    routing: "always via auth.anyo.app start.js; start.js routes to Firebase or backend based on samlProvider"
+    field: "IPartnerSsoDomain.saml.sp.type: firebase | anyobackend"
+    routing: "always via auth.anyo.app start.js; start.js routes to Firebase or backend based on spType"
+  auth_broker_flow:
+    source_of_truth: "/app/u/auth-mode returns providerId + spType"
+    pwa_and_mobile_entry: "always open https://auth.anyo.app/sso/saml/start"
+    anyobackend_sp_roundtrip: "auth.anyo.app -> backend /auth/saml/login -> backend ACS -> auth.anyo.app -> final linkinguri"
+    mobile_reason: "backend direct redirect to anyoapp:// is avoided; final deep-link is owned by auth.anyo.app"
+    idp_initiated_return_via_auth:
+      enabled: true
+      backend_fallback_uri: "https://auth.anyo.app/sso/saml/start"
+      final_destination_default: "https://anyo.app/app"
+      note: "IdP-initiated has no stored linkinguri/session for mobile; treat as web/PWA entry unless RelayState carries linkinguri"
   anyobackend_sp_constants:
     sp_entity_id: "https://anyo.app/saml/sp"
     acs_url: "https://apiv3.anyo.app/auth/saml/acs"
@@ -79,7 +94,7 @@ execution:
       note: "Prefer manual verification with mock-first loop and targeted lint/typecheck only when stable in the repo."
   base_branch_policy:
     default_base: "origin/main"
-    note: "Always branch from origin/main for APH-4253 work unless explicitly required otherwise."
+    note: "Branch from origin/main for APH-4253 work except anyocustomerapp which must branch from APH-3248-expo-upgrades."
 
   current_checked_out_branches_snapshot:
     captured: "2026-02-20"
@@ -107,6 +122,14 @@ execution:
       base: "origin/main"
       branch: "aph-4253"
       pr: "PR-PWA"
+    anyoauth:
+      base: "origin/main"
+      branch: "aph-4253"
+      pr: "PR-Auth"
+    anyocustomerapp:
+      base: "APH-3248-expo-upgrades"
+      branch: "aph-4253"
+      pr: "PR-CustomerApp"
 
   repo_sync_steps:
     - "git fetch origin"
@@ -173,15 +196,19 @@ data_model_targets:
     sso_domain_entry_fields:
       - "domain: string"
       - "enabled: boolean"
-      - "idpType: IdpType enum (AZURE)"
-      - "providerId: string  # saml.<clientCode>--<domainSlug>"
-      - "gipInboundSamlConfigName: string  # projects/*/inboundSamlConfigs/*"
-      - "azure.idpEntityId: string"
-      - "azure.ssoUrl: string"
-      - "azure.certRef: string  # fingerprint/ref only; NOT raw cert"
+      - "saml.sp.type: firebase | anyobackend"
+      - "saml.sp.providerId: string  # saml.<clientCode>--<domainSlug>"
+      - "saml.sp.gipInboundSamlConfigName?: string  # projects/*/inboundSamlConfigs/*"
+      - "saml.sp.signRequest?: boolean"
+      - "saml.idp.type: IdpType enum (AZURE | GSUITE)"
+      - "saml.idp.entityId: string"
+      - "saml.idp.ssoUrl: string"
+      - "saml.idp.certRef?: string  # fingerprint/ref only; NOT raw cert for firebase flow"
+      - "saml.idp.x509Certificate?: string  # stored only for anyobackend flow"
     enums:
       - "AuthMode: OTP | SAML"
-      - "IdpType: AZURE"
+      - "IdpType: AZURE | GSUITE"
+      - "SamlSpType: firebase | anyobackend"
 
 backend_api_contracts:
   admin:
@@ -199,9 +226,9 @@ backend_api_contracts:
         {
           domain,
           enabled,
-          idpType: "azure",
-          clientCode,
-          azure: { idpEntityId, ssoUrl, x509Certificate },
+          spType: "firebase"|"anyobackend",
+          idpType: "azure"|"gsuite",
+          idp: { entityId, ssoUrl, x509Certificate },
           signRequest?: boolean
         }
       output: >
@@ -211,6 +238,7 @@ backend_api_contracts:
           enabled,
           providerId,
           inboundSamlConfigName,
+          spType,
           displayName
         }
   app_un_auth:
@@ -223,7 +251,8 @@ backend_api_contracts:
         {
           mode: "otp"|"saml",
           domain,
-          providerId?
+          providerId?,
+          spType?: "firebase"|"anyobackend"
         }
   mobile_bridge:
     - name: SsoExchange
@@ -412,6 +441,50 @@ tasks:
       - "Test: happy path, cancel, invalid provider, invalid returnTo, repeat sign-in"
       - "List follow-ups (new IdPs, onboarding, hardening)"
 
+  - id: R1
+    repo: anyoauth
+    title: "Unify auth broker for anyobackend SP round-trip"
+    status: completed
+    acceptance:
+      - "start.js accepts backendBaseUrl query param with allowlist (*.share.zrok.io + localhost)"
+      - "For spType=anyobackend, auth.anyo.app routes to backend /auth/saml/login with linkinguri back to auth.anyo.app"
+      - "On return with code/state to auth.anyo.app, start.js redirects to original linkinguri"
+      - "Session storage preserved across backend round-trip"
+
+  - id: R2
+    repo: anyobackendapi
+    title: "Allow auth.anyo.app as backend ACS linkinguri target"
+    status: completed
+    acceptance:
+      - "custom-saml-handler ALLOWED_LINKING_HOSTNAMES includes auth.anyo.app"
+      - "IDP_INITIATED_FALLBACK_URI is https://auth.anyo.app/sso/saml/start"
+      - "SP-initiated flow from auth.anyo.app validates and redirects successfully"
+
+  - id: R3
+    repo: anyopwaui
+    title: "Pass optional backendBaseUrl to auth.anyo.app start URL"
+    status: completed
+    acceptance:
+      - "PWA forwards providerId + spType to auth.anyo.app start URL"
+      - "No app-level env flag required for backendBaseUrl"
+
+  - id: R4
+    repo: anyocustomerapp
+    title: "Pass optional backendBaseUrl to auth.anyo.app start URL (base APH-3248-expo-upgrades)"
+    status: completed
+    acceptance:
+      - "Customer app forwards providerId + spType to auth.anyo.app start URL"
+      - "Anyobackend SP flow returns via auth.anyo.app then deep-links anyoapp://sso/callback with code/state"
+
+  - id: R5
+    repo: all
+    title: "E2E validation for firebase vs anyobackend SP across PWA and customer app"
+    status: todo
+    acceptance:
+      - "PWA popup path works for spType=firebase and spType=anyobackend"
+      - "Mobile openAuthSessionAsync path works for spType=firebase and spType=anyobackend"
+      - "No direct backend-to-anyoapp deep-link in anyobackend flow"
+
   - id: I1
     repo: anyobackendapi
     title: "Install @node-saml/node-saml + create CustomSamlService"
@@ -495,8 +568,8 @@ tasks:
       - "Passes samlProvider in upsert request"
 
 progress:
-  last_update: "2026-03-01"
-  last_agent: "claude-sonnet-4-6"
+  last_update: "2026-03-02"
+  last_agent: "gpt-5.3-codex"
   carryforward:
     - "IDP-initiated custom SAML planned: @node-saml/node-saml in anyobackendapi, per-partner samlProvider field, auth.anyo.app routes to backend for anyobackend providers"
     - "Refactored backend IPartner.ssoDomains from array to Record<string, IPartnerSsoDomain> map keyed by domain"
@@ -506,7 +579,7 @@ progress:
     - "Switched architecture to popup-only SAML login integrated into existing auth flow"
     - "Removed PWA SSO start/callback pages and backend exchange/redeem dependency"
     - "Removed backend /auth/sso/exchange and /auth/sso/redeem routes/handlers"
-  evidence:
+  evidence_legacy:
     - "Added execution.branch_plan + parallel_tracks + write-lock guidance"
     - "Updated branch plan to branch name aph-4253 for all repos"
     - "Added experiments section for mock-first and preview-domain whitelist runbook"
@@ -534,6 +607,11 @@ progress:
     - "Verified anyopwaui and anyobackendapi with typecheck + targeted eslint (`pnpm exec tsc --noEmit`, `pnpm exec tsc -p tsconfig.json --noEmit`, targeted eslint on touched files)"
     - "Normalized state.yml to popup-only architecture and removed stale bridge/callback dependency references"
   evidence:
+    - "R1: anyoauth start.js now accepts backendBaseUrl with allowlist (*.share.zrok.io + localhost), routes anyobackend via backend /auth/saml/login with linkinguri back to auth.anyo.app, and on code/state return forwards to original linkinguri."
+    - "R2: anyobackend custom-saml-handler now allows auth.anyo.app in linkinguri host allowlist and sets IDP_INITIATED_FALLBACK_URI to https://auth.anyo.app/sso/saml/start."
+    - "R3: anyopwaui AuthComponents forwards providerId + spType to auth.anyo.app (no app env toggle for backendBaseUrl)."
+    - "R4: anyocustomerapp signInWithSSO accepts spType and EmailVerification forwards spType from auth-mode response."
+    - "Verification: anyobackendapi TypeScript compile passed (pnpm exec tsc -p tsconfig.json --noEmit), anyopwaui TypeScript compile passed (pnpm exec tsc --noEmit), anyoauth start.js syntax check passed (node --check public/sso/saml/start/start.js)."
     - "Checked out anyobackendapi to aph-4253 branch"
     - "Added SSO_EXCHANGE_CACHE namespace to AnyoCacheService"
     - "Created src/core/service/ssoExchangeService.ts: exchangeFirebaseToken + redeemCode"
@@ -555,4 +633,4 @@ progress:
     - "Verified anyopwaui with pnpm run lint (clean)"
   blocking_questions:
     - "Real Azure/GIP configuration and full end-to-end runtime validation (installed iOS PWA + production IdP config) still pending outside code changes."
-    - "anyocustomerapp (M3) integration not yet started: needs WebBrowser.openAuthSessionAsync call + deep link handler + signInWithCustomToken"
+    - "IdP-initiated mobile deep-link is not supported unless RelayState includes a mobile linkinguri; app-initiated flow is the supported mobile path."
