@@ -1,0 +1,25 @@
+{
+	"folders": [
+		{
+			"path": "../anyobackendapi"
+		},
+		{
+			"path": "../anyoauth"
+		},
+		{
+			"path": "../anyopwaui"
+		},
+		{
+			"path": "../anyo-portal"
+		},
+		{
+			"path": "../anyocustomerapp"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"typescript.tsdk": "node_modules/typescript/lib"
+	}
+}
