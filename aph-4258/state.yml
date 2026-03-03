@@ -1,0 +1,128 @@
+meta:
+  jira: APH-4258
+  title: "LYFIS: LLM-based lab unit conversion to requiredUnit + scoring skip + debug surfacing"
+  created: "2026-03-03"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyo_backend_api: "anyobackendapi/"
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  scoring_and_trace:
+    - "Do NOT modify anyobackendapi/src/core/service/agents/LyfisExcelCompilerAgent.ts"
+    - "Do NOT store conversion debug inside ScoreTrace; sandbox validates trace shape"
+  unit_handling:
+    - "No deterministic unit text normalization beyond raw string compare gating"
+    - "When rawUnits !== requiredUnit, use LLM conversion"
+    - "If conversion not possible, marker must be skipped for LYFIS scoring"
+  data_migration:
+    - "No backfill; only newly processed lab reports get normalizedData"
+  testing_policy:
+    - "Do NOT add tests unless explicitly requested"
+
+decisions:
+  canonical_unit_source: "LyfisLabMarker.requiredUnit"
+  conversion_trigger: "rawUnits !== requiredUnit (string compare)"
+  conversion_location: "LabReportProcessingWorkerV2 (post-merge, pre-persist)"
+  conversion_engine: "LLM bulk conversion call per lab report"
+  persist_conversion_result: "AnyoLabReportMeta.normalizedData (LYFIS-only)"
+  scoring_usage:
+    when_convertible: "use normalizedData.value/units"
+    when_not_convertible: "skip marker for compiled engine input"
+  debug_surfacing:
+    - "Store per-marker reason in AnyoLabReportMeta.normalizedData.reason"
+    - "Also surface per-disease marker skip reasons in ANYO_LYFIS_DISEASE_SCORES (new field on LyfisDiseaseScoreDocument)"
+  plan_docs:
+    - "Keep ticket-local plan.yml up to date"
+    - "Later: write design/implementation doc under anyobackendapi/docs/plans/ if needed"
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification + targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4258"
+      pr: "PR-Backend"
+
+tasks:
+  - id: A1
+    title: "Add normalizedData to AnyoLabReportMeta (LYFIS-only)"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/core/models/AnyoLabReportMeta.ts"
+  - id: A2
+    title: "Add disease-score debug field for skipped/converted markers"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/anyo-lyfis/models/lyfisDiseaseScore.ts"
+      - "src/anyo-lyfis/service/scoring/persistence/scoreSnapshot.ts"
+  - id: B1
+    title: "Add LLM prompt template: LYFIS_LAB_UNIT_CONVERSION (bulk)"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/common/services/anyoLLMService/AnyoPromptTemplates.ts"
+      - "src/common/services/anyoLLMService/llmPromptTemplates.ts"
+  - id: B2
+    title: "Compute normalizedData during LabReportProcessingWorkerV2 (post-merge)"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/jobServer/pubSubWorkers/LabReportProcessingWorkerV2.ts"
+      - "src/core/service/masterDataService.ts (read usage only)"
+  - id: C1
+    title: "Use normalizedData in prepareLabMarkers; skip not-convertible markers"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/anyo-lyfis/service/scoring/dataPreparation/labMarkers.ts"
+  - id: C2
+    title: "Propagate per-marker conversion/skip debug into disease results and persist"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/anyo-lyfis/service/scoring/scoring/drsScoring.ts"
+      - "src/anyo-lyfis/service/scoring/scoring/pdhScoring.ts"
+      - "src/anyo-lyfis/service/scoring/persistence/scoreSnapshot.ts"
+  - id: V1
+    title: "Manual verification (process a report, score an assessment, inspect debug fields)"
+    repo: anyobackendapi
+    status: pending
+    evidence_expected:
+      - "Mongo: meta rows contain normalizedData"
+      - "Mongo: disease score contains conversion debug for skipped markers"
+      - "App: scoring completes even when some markers not convertible"
+
+progress:
+  last_update: "2026-03-03"
+  last_agent: "gpt-5.3-codex"
+  carryforward:
+    - "Conversion is LLM-driven; arithmetic is not deterministic by design; must store reason/confidence in normalizedData"
+    - "Never put conversion debug inside ScoreTrace (sandbox Zod validation)"
+  evidence:
+    - "Implemented A1/B1/B2 in anyobackendapi (AnyoLabReportMeta.normalizedData, new LYFIS_LAB_UNIT_CONVERSION template, WorkerV2 conversion + persistence flow)."
+    - "Verification: pnpm lint:check:file src/core/models/AnyoLabReportMeta.ts src/common/services/anyoLLMService/AnyoPromptTemplates.ts src/common/services/anyoLLMService/llmPromptTemplates.ts src/jobServer/pubSubWorkers/LabReportProcessingWorkerV2.ts"
+    - "Refactored conversion into src/core/service/lyfisLabUnitNormalizationService.ts using conversionRequestId=reportId:rowIndex:labMarkerKey and mapping by requestId."
+    - "Simplified normalization request assembly to a single loop (builds conversionContexts + conversionInputs together; removed extra map pass)."
+    - "Implemented C1/C2: prepareLabMarkers now consumes normalizedData and records labMarkerConversionDebug; debug persisted to ANYO_LYFIS_DISEASE_SCORES and surfaced in score snapshot/API payloads for testing users."
+    - "Verification: pnpm lint:check:file src/core/service/lyfisLabUnitNormalizationService.ts src/jobServer/pubSubWorkers/LabReportProcessingWorkerV2.ts src/common/services/anyoLLMService/llmPromptTemplates.ts src/common/services/anyoLLMService/AnyoPromptTemplates.ts src/core/models/AnyoLabReportMeta.ts src/anyo-lyfis/service/scoring/dataPreparation/labMarkers.ts src/anyo-lyfis/service/scoring/scoring/drsScoring.ts src/anyo-lyfis/service/lyfisAssessmentScoringService.ts src/anyo-lyfis/service/scoring/scoring/pdhScoring.ts src/anyo-lyfis/service/scoring/persistence/scoreSnapshot.ts src/anyo-lyfis/models/lyfisDiseaseScore.ts src/anyo-lyfis/models/userLyfisScore.ts src/anyo-lyfis/service/lyfisAppService.ts src/anyo-lyfis/service/scoring/types.ts"
+  blocking_questions: []

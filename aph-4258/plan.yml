@@ -1,0 +1,66 @@
+feature: "LYFIS: LLM-based lab unit conversion + scoring skip + debug surfacing"
+ticket: APH-4258
+created: "2026-03-03"
+status: in_progress
+
+problem: >
+  LYFIS scoring assumes lab marker values are in the canonical units expected by scorecards
+  (represented as LyfisLabMarker.requiredUnit). Lab reports may provide the same marker
+  in different units. Today we store units as-is and do not normalize for LYFIS, causing
+  wrong scoring or missing markers. Some conversions are not possible (e.g. Lp(a) mg/dL
+  <-> nmol/L where particle density varies) and should be explicitly skipped with a reason.
+
+solution: >
+  During lab report processing (V2), after biomarkers are merged with labMarkerKey (LyfisLabMarker.m_id),
+  call a dedicated LLM unit conversion step for rows where rawUnits !== requiredUnit. Persist the result
+  under AnyoLabReportMeta.normalizedData (LYFIS-only). LYFIS scoring uses normalizedData when conversion
+  is possible; otherwise it skips that marker for compiled engine input. Conversion skip reasons are
+  surfaced in ANYO_LYFIS_DISEASE_SCORES via a dedicated debug field (not in trace).
+
+canonical_units:
+  source: "LyfisLabMarker.requiredUnit"
+  trigger_rule: "rawUnits !== requiredUnit (string compare)"
+
+flow:
+  ingestion_v2:
+    - "LabReportProcessingAgent extracts value + units as printed"
+    - "LabReportProcessingAgent matches extracted markers -> labMarkerKey (m_id)"
+    - "LabReportProcessingWorkerV2 merges extracted + matched (+ loinc resolved)"
+    - "For each merged marker where units mismatch requiredUnit -> bulk LLM conversion call"
+    - "Persist raw value/units unchanged; store normalizedData for LYFIS"
+  scoring:
+    - "prepareLabMarkers uses normalizedData.value when conversionPossible=true"
+    - "If conversionPossible=false or LLM failed -> marker excluded from labMarkers input"
+    - "Disease score doc stores per-marker skip reason for debugging"
+
+data_model:
+  anyo_lab_reports_meta:
+    add_field: "normalizedData (LYFIS-only conversion result + reason/confidence)"
+  anyo_lyfis_disease_scores:
+    add_field: "per-marker conversion/skip debug (sibling field, not inside trace)"
+
+non_goals:
+  - "No changes to src/core/service/agents/LyfisExcelCompilerAgent.ts"
+  - "No backfill of existing lab meta"
+  - "No unit alias maintenance tables or deterministic conversion tables in code"
+  - "No changes to ScoreTrace schema"
+
+tasks:
+  - id: A1
+    title: "Add normalizedData to AnyoLabReportMeta"
+    status: completed
+  - id: B1
+    title: "Add LYFIS_LAB_UNIT_CONVERSION LLM template (bulk)"
+    status: completed
+  - id: B2
+    title: "Compute and persist normalizedData in LabReportProcessingWorkerV2"
+    status: completed
+  - id: C1
+    title: "Use normalizedData in prepareLabMarkers; skip not-convertible markers"
+    status: completed
+  - id: C2
+    title: "Persist per-marker conversion/skip debug to ANYO_LYFIS_DISEASE_SCORES"
+    status: completed
+  - id: V1
+    title: "Manual verification with one lab report + one scoring run"
+    status: pending
