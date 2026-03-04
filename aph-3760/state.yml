@@ -1,0 +1,86 @@
+meta:
+  jira: APH-3760
+  title: "Staging external reachability: replace ALB proxy with public Caddy wildcard TLS + ECS Anywhere routing sync (no NAT)"
+  created: "2026-03-04"
+  status: completed
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyo_backend_api: "anyobackendapi/"
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  aws:
+    region: ap-south-1
+    account_id: "004230034375"
+  domain:
+    wildcard: "*.e.staging.anyo.co"
+    dns_validation: "LetsEncrypt DNS-01 via Route53"
+  proxying:
+    tailscale_upstream_ip: "100.75.153.19"
+    note: "ECS Anywhere hostPort is dynamic per service; proxy config must be kept in sync"
+
+decisions:
+  current_symptom: "curl https://aph-4204.e.staging.anyo.co/version -> ALB 504 after ~60s"
+  root_cause: "Existing staging-proxy has broken egress (0.0.0.0/0 route to blackhole NAT; no VPC endpoints) causing upstream/proxy automation failures"
+  target_architecture:
+    dns: "Route53 wildcard -> public proxy Elastic IP (no ALB)"
+    tls_termination: "Caddy on proxy; wildcard cert via LetsEncrypt DNS-01 (Route53)"
+    routing: "Caddy reverse_proxy per-branch host to http://100.75.153.19:<hostPort>"
+    sync: "Modify existing nginx-ecs-sync service to generate Caddy route snippets + reload Caddy"
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-3760"
+      pr: "PR-Backend"
+
+tasks:
+  - id: A1
+    title: "Capture current AWS + host evidence for outage"
+    repo: anyobackendapi
+    status: completed
+    evidence_expected:
+      - "ALB returns 504; direct tailscale upstream works"
+      - "Existing proxy subnet route uses blackhole NAT; no VPC endpoints"
+  - id: B1
+    title: "Update sync service to generate Caddy configs (keep nginx mode default)"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "infra/nginx-ecs-sync/standalone/nginx-ecs-sync-service.ts"
+  - id: C1
+    title: "Ops runbook: deploy public proxy + Caddy wildcard DNS-01 + DNS cutover"
+    repo: anyobackendapi
+    status: completed
+
+progress:
+  last_update: "2026-03-04"
+  last_agent: "gpt-5.2"
+  carryforward: []
+  evidence:
+    - "Root cause: old staging-proxy had broken egress (0.0.0.0/0 route to blackhole NAT; no VPC endpoints)"
+    - "Solution: new public EC2 i-00e14935f2a589ebb with EIP 3.110.4.60"
+    - "Caddy v2.11.1 with Route53 DNS module for wildcard TLS (*.e.staging.anyo.co)"
+    - "Modified nginx-ecs-sync-service.ts to generate Caddy snippets (PROXY_MODE=caddy)"
+    - "ecs-caddy-sync.service running as systemd, auto-restart, 60s scan interval"
+    - "DNS cutover: *.e.staging.anyo.co -> 3.110.4.60"
+    - "All endpoints verified: aph-4204, aph-4249, aph-4213, aph-4248 -> correct version responses"
+  blocking_questions: []
