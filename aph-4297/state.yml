@@ -1,0 +1,91 @@
+meta:
+  jira: APH-4297
+  title: "Admin-generated QR codes (safe redirect + ownership tracking)"
+  created: "2026-03-06"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyo_portal_admin: "anyo-portal/projects/admin/"
+    anyo_backend_api: "anyobackendapi/"
+    anyo_web_app: "anyo-web-app/"
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  security:
+    - "QR scans must always hit an Anyo-controlled URL first (no 3rd-party interstitials)."
+    - "Do not store PII in state.yml."
+  destination_url_allowlist:
+    allowed_domains:
+      - "anyo.app"
+      - "anyo.co"
+    note: "Phase 1 restricts destinations to these domains only."
+
+decisions:
+  qr_public_entrypoint:
+    default_domain: "anyo.app"
+    alternate_domain: "anyo.co"
+    path_prefix: "/q/"
+  analytics:
+    phase_1: "Store minimal server-side metadata (createdBy, createdAt, destinationUrl, status)."
+    phase_2: "Optional scan analytics (PostHog / Firebase hosting instrumentation) if easy."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyo-portal:
+      base: "origin/main"
+      branch: "aph-4297"
+      pr: "PR-Portal"
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4297"
+      pr: "PR-Backend"
+    anyo-web-app:
+      base: "origin/main"
+      branch: "aph-4297"
+      pr: "PR-Web"
+
+tasks:
+  - id: B1
+    title: "Backend: QR entity + create/list/disable endpoints (audit createdBy)"
+    repo: anyobackendapi
+    status: pending
+  - id: B2
+    title: "Backend: public redirect handler for /q/:code (enforce allowlist + disabled handling)"
+    repo: anyobackendapi
+    status: pending
+  - id: W1
+    title: "Web app: /q/:code route that resolves + redirects (or proxies to backend)"
+    repo: anyo-web-app
+    status: pending
+  - id: A1
+    title: "Admin UI: create QR (destination URL) + list + disable"
+    repo: anyo-portal/projects/admin
+    status: pending
+  - id: D1
+    title: "Docs: how to create a QR + operational notes + phase-2 analytics follow-up"
+    repo: all
+    status: pending
+
+progress:
+  last_update: "2026-03-06"
+  last_agent: "gpt-5.2"
+  carryforward: []
+  evidence: []
+  blocking_questions: []
