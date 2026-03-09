@@ -1,0 +1,27 @@
+## Source: kubectl top pods -n anyo-backend --containers + kubectl get pods -o wide
+## Collected: 2026-03-09 ~09:16 UTC
+
+## Live pod CPU (kubectl top --containers):
+POD                                  NAME     CPU(cores)   MEMORY(bytes)
+anyo-agenda-6bfd5ff56d-fkgbn         agenda   16m          731Mi
+anyo-api-58d7485b64-ct6n6            api      77m          987Mi    (age: 6m34s, new pod)
+anyo-api-58d7485b64-f8cpq            api      22m          757Mi    (age: 36m)
+anyo-api-58d7485b64-ls5t7            api      83m          481Mi    (age: 2m16s, newest pod)
+anyo-api-58d7485b64-wwlzz            api      22m          721Mi    (age: 58m)
+anyo-pubsub-6cb57bfd59-mdp46         pubsub   6m           765Mi
+anyo-valkey-cache-768d976c86-kc7rv   valkey   3m           9Mi
+
+## anyo-api pod distribution (kubectl get pods -l app=anyo-api -o wide):
+NAME                        READY  STATUS   RESTARTS  AGE     IP            NODE
+anyo-api-58d7485b64-ct6n6   1/1    Running  0         6m34s   10.110.1.72   pool-1-ff79fc72-rwmf
+anyo-api-58d7485b64-f8cpq   1/1    Running  0         36m     10.110.0.12   pool-1-1f48042e-ztc2
+anyo-api-58d7485b64-ls5t7   1/1    Running  0         2m16s   10.110.0.84   pool-1-0a2640dd-7pw7
+anyo-api-58d7485b64-wwlzz   1/1    Running  0         58m     10.110.0.9    pool-1-1f48042e-ztc2
+
+## Derived metrics:
+# Total CPU (4 pods): 77 + 22 + 83 + 22 = 204m
+# Average CPU (4 pods): 51m (HPA currentMetrics shows 34m — measurement window difference)
+# HPA target: 225m average per pod
+# Current utilization ratio: 34m/225m = 15% of threshold → well below scale trigger
+# Pods on 3 distinct nodes (GKE Autopilot multi-zone)
+# New pods (ls5t7, ct6n6) show higher CPU due to cold start/warm-up

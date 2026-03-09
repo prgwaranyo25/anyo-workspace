@@ -1,0 +1,115 @@
+meta:
+  jira: APH-4312
+  title: "GKE: investigate anyo-api HPA early scale-outs and tune autoscaling (prod anyo-infra)"
+  created: "2026-03-09"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyo_backend_api: "anyobackendapi/"
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  scope:
+    - "Primary environment: prod (GCP project anyo-infra)."
+    - "Target workload: anyo-api HPA scale-outs (replica changes), not node scaling."
+  safety:
+    - "Phase 1 is evidence-only (kubectl describe/get/top, events, monitoring correlation)."
+    - "Do not retrieve or store secrets/PII in this ticket folder."
+
+decisions:
+  epic:
+    key: "APH-4179"
+  known_context:
+    source: "anyobackendapi/docs/infra-migration/migration-state.yaml"
+    prod_project: "anyo-infra"
+    cluster:
+      name: "anyo-gke-autopilot-as1"
+      region: "asia-south1"
+      namespace: "anyo-backend"
+    current_hpa_intent:
+      hpa_name: "anyo-api-hpa"        # actual name (was assumed anyo-api)
+      workload: "anyo-api"
+      min_replicas: 2
+      max_replicas: 50                 # CORRECTED: state.yml previously said 10
+      metric: "cpu AverageValue"       # CORRECTED: absolute millicores, not utilization %
+      target_cpu_average_value_millicores: 225
+      scale_up_stabilization_window_seconds: 0    # zero — immediate scale-up
+      scale_down_stabilization_window_seconds: 300
+      scale_policy: "Percent 100 per 60s (can double replicas every minute)"
+    current_pod_resources:
+      cpu_request_millicores: 750
+      cpu_limit_millicores: 1500
+      memory_request: "2Gi"
+      memory_limit: "3Gi"
+    derived_thresholds:
+      notes:
+        - "With AverageValue target 225m, scale pressure begins when avg CPU > 225m per pod."
+        - "At 2 pods idle (~20-30m avg), total would need to exceed 450m to trigger scale-up."
+        - "vpa-recommender (GKE Autopilot) manages HPA status independently via HpaProfilePerformance."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4312"
+      pr: "PR-Backend (if config changes needed)"
+
+tasks:
+  - id: A1
+    title: "Collect prod HPA evidence for anyo-api (spec, status, events, observed metrics)"
+    repo: ops
+    status: done
+    evidence_expected:
+      - "kubectl get/describe hpa anyo-api-hpa"
+      - "kubectl get events around scale-out times"
+      - "kubectl top pods (and containers) for anyo-api during/near spike window"
+    evidence_collected:
+      - "notes/a1-evidence/01-hpa-spec.yaml — full HPA spec + status"
+      - "notes/a1-evidence/02-hpa-events.txt — rescale events (33h history)"
+      - "notes/a1-evidence/03-pod-metrics.txt — live kubectl top + pods wide"
+      - "notes/a1-evidence/04-raw-api.json — raw API, confirms vpa-recommender managing HPA"
+      - "notes/a1-evidence/05-analysis-notes.md — synthesis and root-cause hypotheses"
+  - id: A2
+    title: "Root-cause analysis: why HPA scales early (bursty CPU, metric noise, requests mismatch, behavior config)"
+    repo: ops
+    status: pending
+  - id: A3
+    title: "Propose 2-3 tuning options with trade-offs (behavior/stabilization, target change, metric type)"
+    repo: ops
+    status: pending
+  - id: A4
+    title: "Implement chosen tuning in manifests/IaC (only after approval)"
+    repo: anyobackendapi
+    status: pending
+  - id: A5
+    title: "Verify outcome: reduced scale-out frequency without latency regressions"
+    repo: ops
+    status: pending
+
+progress:
+  last_update: "2026-03-09"
+  last_agent: "claude-sonnet-4-6"
+  carryforward: []
+  evidence:
+    - "A1 done. HPA name is anyo-api-hpa (not anyo-api). maxReplicas=50 (not 10). Metric is AverageValue 225m (not utilization %). scaleUp stabilizationWindowSeconds=0."
+    - "Over 33h: 200+ scale events. HpaProfilePerformance fired x241 — GKE Autopilot vpa-recommender is overriding HPA. Zero scale-up stabilization + cold-start CPU spikes cause oscillation."
+    - "Current state (2026-03-09 09:16 UTC): 4 replicas, 34m avg CPU (well below 225m target), holding at 4 due to ScaleDownStabilized condition."
+    - "See notes/a1-evidence/ for full raw data and analysis."
+  blocking_questions: []

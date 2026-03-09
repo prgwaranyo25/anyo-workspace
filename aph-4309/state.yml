@@ -1,0 +1,91 @@
+meta:
+  jira: APH-4309
+  title: "LYFIS compiler: exclude fallback scenarios when specific scenarios match"
+  created: "2026-03-09"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyo_backend_api: "anyobackendapi/"
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  scoring_logic:
+    - "Work primarily in anyobackendapi/src/core/service/agents/LyfisExcelCompilerAgent.ts and its compiler prompt."
+    - "Do not change scenario selection to first-match-wins."
+    - "Keep max-wL selection among matched scenarios."
+    - "Exclude fallback/catch-all scenarios from candidate selection whenever at least one non-fallback scenario matches."
+    - "Fallback detection must be contextual, not keyword-based."
+    - "Preserve existing no-labs override behavior."
+  testing_policy:
+    - "Do NOT add tests unless explicitly requested."
+
+decisions:
+  problem_statement: "A fallback scenario can match alongside a more specific scenario; current generated engine chooses max wL across all matched scenarios, so fallback can incorrectly win."
+  selected_approach: "Approach 1 - fix via LyfisExcelCompilerAgent prompt/template generation."
+  scenario_selection_rule: "Evaluate all scenarios, ignore matched fallback scenarios if any matched specific scenario exists, then pick max wL using existing tie-breaks."
+  fallback_detection: "Compiler must classify fallback scenarios contextually from intent/condition structure, not by scenario name keywords."
+  no_labs_override: "Keep existing override: if totals.maxLabPoints === 0, force questionnaire-only weights."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4309"
+      pr: "PR-Backend"
+
+tasks:
+  - id: C1
+    title: "Create APH-4309 ticket context and design notes"
+    repo: anyo-workspace
+    status: completed
+  - id: B1
+    title: "Update compiler prompt to emit fallback-aware scenario metadata"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/core/service/agents/LyfisExcelCompilerAgent.ts"
+  - id: B2
+    title: "Update scenario selection template to exclude fallback candidates when specific scenarios match"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/core/service/agents/LyfisExcelCompilerAgent.ts"
+  - id: B3
+    title: "Preserve trace and no-labs override behavior while adding fallback exclusion guidance"
+    repo: anyobackendapi
+    status: completed
+    files:
+      - "src/core/service/agents/LyfisExcelCompilerAgent.ts"
+  - id: V1
+    title: "Manual verification with scorecards where specific and fallback scenarios both match"
+    repo: anyobackendapi
+    status: pending
+
+progress:
+  last_update: "2026-03-09"
+  last_agent: "claude-sonnet-4-6"
+  carryforward: []
+  evidence:
+    - "Created ticket context folder aph-4309/ from _template and captured the approved design direction."
+    - "B1: Added isFallback:boolean compile-time classification guidance + example shapes to COMPILATION STRATEGY section."
+    - "B2: Replaced single-pass max-wL loop (with looksLikeAll early-break) with three-phase algorithm: Phase1 evaluate all, Phase2 partition specific vs fallback, Phase3 pick winner from candidatePool."
+    - "B3: Updated SCENARIO TRACE description to two-phase language; no-labs override block at lines ~1082-1089 kept verbatim."
+    - "Branch aph-4309 created in anyobackendapi."
+  blocking_questions: []

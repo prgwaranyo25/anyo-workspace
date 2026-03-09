@@ -1,0 +1,8 @@
+{
+  "_source": "kubectl get --raw /apis/autoscaling/v2/namespaces/anyo-backend/horizontalpodautoscalers/anyo-api-hpa",
+  "_collected": "2026-03-09",
+  "_note": "manager=vpa-recommender is updating HPA status — confirms GKE Autopilot VPA integration",
+  "managedFields_managers": ["kubectl-client-side-apply", "vpa-recommender"],
+  "vpa_recommender_last_update": "2026-03-09T09:15:44Z",
+  "kubectl_last_apply": "2026-03-01T08:38:53Z"
+}

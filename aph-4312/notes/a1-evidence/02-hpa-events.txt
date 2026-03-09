@@ -1,0 +1,23 @@
+## Source: kubectl get events -n anyo-backend --sort-by=.lastTimestamp --field-selector reason=SuccessfulRescale
+## Collected: 2026-03-09 ~09:16 UTC
+
+LAST SEEN   TYPE     REASON              OBJECT                                 MESSAGE
+60m         Normal   SuccessfulRescale   horizontalpodautoscaler/anyo-api-hpa   New size: 2; reason: cpu resource below target
+55m         Normal   SuccessfulRescale   horizontalpodautoscaler/anyo-api-hpa   New size: 5; reason: cpu resource above target
+45m         Normal   SuccessfulRescale   horizontalpodautoscaler/anyo-api-hpa   New size: 5; reason: cpu resource below target
+37m         Normal   SuccessfulRescale   horizontalpodautoscaler/anyo-api-hpa   New size: 4; reason: cpu resource above target
+22m         Normal   SuccessfulRescale   horizontalpodautoscaler/anyo-api-hpa   New size: 4; reason: cpu resource below target
+15m         Normal   SuccessfulRescale   horizontalpodautoscaler/anyo-api-hpa   New size: 6; reason: cpu resource above target
+2m16s       Normal   SuccessfulRescale   horizontalpodautoscaler/anyo-api-hpa   (combined): New size: 4; reason: cpu resource above target
+
+## Scale event summary from kubectl describe (over 33h):
+# - "New size: 2; reason: cpu resource below target"  → x61 occurrences over 33h
+# - "New size: 5; reason: cpu resource above target"  → x17 occurrences over 29h
+# - "New size: 5; reason: cpu resource below target"  → x4 occurrences over 17h
+# - "New size: 4; reason: cpu resource above target"  → x44 occurrences over 33h
+# - "New size: 4; reason: cpu resource below target"  → x17 occurrences over 29h
+# - "New size: 6; reason: cpu resource above target"  → x10 occurrences over 21h
+# - HpaProfilePerformance (VPA-driven rescale)        → x241 occurrences over 33h
+
+## KEY: HpaProfilePerformance fires every ~8 minutes (241x in 33h)
+## Indicates GKE Autopilot vpa-recommender is continuously overriding HPA targets.

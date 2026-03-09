@@ -1,0 +1,64 @@
+## Source: kubectl get hpa anyo-api-hpa -n anyo-backend -o yaml
+## Collected: 2026-03-09
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: anyo-api-hpa
+  namespace: anyo-backend
+  creationTimestamp: "2026-02-23T08:42:18Z"
+spec:
+  behavior:
+    scaleDown:
+      policies:
+      - periodSeconds: 60
+        type: Percent
+        value: 100
+      selectPolicy: Max
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      policies:
+      - periodSeconds: 60
+        type: Percent
+        value: 100
+      selectPolicy: Max
+      stabilizationWindowSeconds: 0   # <-- ZERO: no stabilization on scale-up
+  maxReplicas: 50                     # NOTE: state.yml said 10 — actual is 50
+  minReplicas: 2
+  metrics:
+  - resource:
+      name: cpu
+      target:
+        averageValue: "225m"          # NOTE: AverageValue (absolute) not Utilization %
+        type: AverageValue
+    type: Resource
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: anyo-api
+status:
+  conditions:
+  - lastTransitionTime: "2026-03-09T09:14:56Z"
+    message: recent recommendations were higher than current one, applying the highest
+      recent recommendation
+    reason: ScaleDownStabilized
+    status: "True"
+    type: AbleToScale
+  - lastTransitionTime: "2026-03-08T20:58:50Z"
+    reason: ValidMetricFound
+    status: "True"
+    type: ScalingActive
+  - lastTransitionTime: "2026-03-09T08:07:57Z"
+    reason: DesiredWithinRange
+    status: "False"
+    type: ScalingLimited
+  currentMetrics:
+  - resource:
+      current:
+        averageUtilization: 9
+        averageValue: 34m
+        value: 138m      # total CPU across all anyo-api pods
+      name: cpu
+    type: Resource
+  currentReplicas: 4
+  desiredReplicas: 4
+  lastScaleTime: "2026-03-09T09:13:29Z"
