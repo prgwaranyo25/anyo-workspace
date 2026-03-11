@@ -2,6 +2,10 @@
 
 This folder holds the persistent working memory for Jira ticket `APH-XXXX`.
 
+Use this template for either:
+- a standalone ticket at the workspace root, or
+- a child ticket nested under an epic folder
+
 Single source of truth: `state.yml`
 - `state.yml`: requirements, decisions, tasks, progress
 - `scripts/`: helper commands (no secrets)
