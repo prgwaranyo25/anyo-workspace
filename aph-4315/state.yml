@@ -1,0 +1,82 @@
+meta:
+  jira: APH-4315
+  title: "Set up GCP BigQuery billing export via Terraform"
+  created: "2026-03-09"
+  status: active
+  owners: []
+  repos_and_paths:
+    anyobackendapi:
+      - infra/gcp/terraform/stacks/billing-export/
+      - infra/gcp/terraform/tfvars/
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  - "Standard usage cost export only (no detailed or pricing export)"
+  - "Target GCP project: anyo-infra"
+  - "Dataset region: asia-south1"
+  - "Billing account ID must be passed as -var at apply time (not committed)"
+  - "Terraform cannot activate billing export — one-time manual step in GCP Console required after apply"
+
+decisions:
+  dataset_id: billing_export
+  dataset_location: asia-south1
+  backend_bucket: anyo-tfstate-dev
+  backend_prefix: billing-export
+  stack_is_standalone: "Not part of setup-anyo-infra.sh CORE/POST phases — run directly"
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi: aph-4315
+
+tasks:
+  - id: T1
+    title: "Create stacks/billing-export/ Terraform stack"
+    status: completed
+    files:
+      - infra/gcp/terraform/stacks/billing-export/versions.tf
+      - infra/gcp/terraform/stacks/billing-export/variables.tf
+      - infra/gcp/terraform/stacks/billing-export/main.tf
+      - infra/gcp/terraform/stacks/billing-export/outputs.tf
+  - id: T2
+    title: "Create tfvars/billing-export.common.tfvars"
+    status: completed
+    files:
+      - infra/gcp/terraform/tfvars/billing-export.common.tfvars
+  - id: T3
+    title: "terraform apply"
+    status: completed
+    note: "Applied via worktree. Dataset billing_export created in anyo-infra/asia-south1. billing_account_id=01B1B8-1F20D4-100B02."
+  - id: T4
+    title: "Activate billing export in GCP Console"
+    status: completed
+    note: "User confirmed export activated: Billing → Billing Export → BigQuery Export → anyo-infra / billing_export"
+  - id: T5
+    title: "Merge to main"
+    status: completed
+    note: "Cherry-picked commits 8d839d855 + d4d9ac242 onto main. Pushed to origin/main."
+
+progress:
+  last_update: "2026-03-09"
+  last_agent: "claude-sonnet-4-6"
+  carryforward: []
+  evidence:
+    - "BQ dataset: https://bigquery.googleapis.com/bigquery/v2/projects/anyo-infra/datasets/billing_export"
+    - "Commits on main: 8d839d855, d4d9ac242"
+    - "Billing export activated by user — data flows within ~24h"
+  blocking_questions: []
