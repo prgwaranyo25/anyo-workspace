@@ -1,0 +1,53 @@
+meta:
+  jira: APH-4179
+  title: "AWS GCP Migration"
+  created: "2026-03-12"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi:
+      - infra/gcp/terraform/
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth for the epic. Keep accurate, minimal, and high level.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "Keep detailed implementation tasks in child ticket state.yml files."
+    - "Track shared blockers and cross-ticket decisions here."
+
+constraints:
+  scope:
+    - "Track shared migration work across AWS and GCP infrastructure cutover, cost, and observability topics."
+    - "Keep ticket-specific execution details in child tickets."
+
+decisions:
+  shared_project:
+    choice: "Primary GCP project for migrated infra is anyo-infra."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan: {}
+
+child_tickets:
+  - key: APH-4356
+    title: "Investigate Cloud Logging cost spike vs GKE in anyo-infra"
+    status: active
+
+progress:
+  last_update: "2026-03-12"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Epic folder created in workspace from _epic_template."
+    - "Child ticket added: APH-4356 - Investigate Cloud Logging cost spike vs GKE in anyo-infra."
+  blocking_questions: []

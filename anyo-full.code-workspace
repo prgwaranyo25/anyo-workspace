@@ -20,6 +20,9 @@
 		},
 		{
 			"path": "../anyoexpertportal"
+		},
+		{
+			"path": "../anyopartnerportal"
 		}
 	],
 	"settings": {

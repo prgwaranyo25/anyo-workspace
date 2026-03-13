@@ -1,0 +1,92 @@
+meta:
+  jira: APH-4356
+  title: "Investigate Cloud Logging cost spike vs GKE in anyo-infra"
+  created: "2026-03-12"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi:
+      - infra/gcp/terraform/stacks/billing-export/
+      - infra/gcp/terraform/tfvars/
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  scope:
+    - "Investigation only; no infrastructure mutations as part of this ticket."
+    - "Use BigQuery billing export as the source of truth for cost analysis."
+    - "Primary GCP project is anyo-infra."
+  safety:
+    - "Do not retrieve or store secrets, tokens, or PII."
+
+decisions:
+  parent_epic: "APH-4179"
+  billing_source:
+    choice: "Analyze the billing export already enabled in BigQuery dataset billing_export."
+  analysis_goal:
+    choice: "Identify whether Cloud Logging spend is driven by ingestion, storage, or other SKUs and compare it against Kubernetes Engine costs."
+  live_logging_verification:
+    choice: "Use read-only gcloud logging inspection to validate actual bucket retention, sink routing, and duplicate-storage risk before proposing exclusions."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan: {}
+
+tasks:
+  - id: A1
+    title: "Identify the billing export table and validate schema"
+    repo: ops
+    status: completed
+  - id: A2
+    title: "Run BigQuery cost breakdown for Cloud Logging and Kubernetes Engine"
+    repo: ops
+    status: completed
+  - id: A3
+    title: "Summarize likely root cause and optimization opportunities"
+    repo: ops
+    status: completed
+  - id: A4
+    title: "Inspect live Cloud Logging buckets, sinks, and views in anyo-infra"
+    repo: ops
+    status: completed
+  - id: A5
+    title: "Confirm whether _Default is causing duplicate log retention with custom buckets"
+    repo: ops
+    status: completed
+
+progress:
+  last_update: "2026-03-12"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Jira created: APH-4356"
+    - "Parent epic: APH-4179 - AWS GCP Migration"
+    - "Billing export table confirmed: anyo-infra.billing_export.gcp_billing_export_v1_01B1B8_1F20D4_100B02"
+    - "Available billing export data for anyo-infra currently spans 2026-03-06 through 2026-03-11."
+    - "For 2026-03-09 through 2026-03-11, Cloud Logging cost is INR 1564.26 vs Kubernetes Engine INR 1523.74."
+    - "Cloud Logging SKUs are dominated by Log Storage cost (INR 1532.63) with smaller Vended Logs Storage (INR 31.63)."
+    - "Top Cloud Logging resource types over 2026-03-09 through 2026-03-11: k8s_cluster INR 978.26 (62.5%), k8s_node INR 145.33, audited_resource INR 139.71, gce_instance INR 87.99, k8s_container INR 80.25."
+    - "Vended Logs Storage is mostly gce_subnetwork (INR 30.66), which strongly suggests VPC Flow Logs contribution."
+    - "Read-only gcloud inspection confirmed _Default sink routes all non-required logs to logging.googleapis.com/projects/anyo-infra/locations/global/buckets/_Default except activity, system_event, and access_transparency audit logs."
+    - "_Default bucket retention is 30 days; _Required bucket retention is 400 days and locked."
+    - "Custom log buckets present in project: audit-logs (365 days) and lb-apiv3-requests (30 days)."
+    - "Custom sinks present in project: audit-logs-sink routes activity, data_access, and policy logs to audit-logs; lb-apiv3-requests-sink routes API http_load_balancer logs to lb-apiv3-requests."
+    - "_Default bucket view excludes data_access only at the view layer; this does not prevent storage in _Default."
+    - "Current live routing indicates likely duplicate retention for at least data_access/policy audit logs and API load balancer logs across _Default plus custom buckets; activity logs may also exist in both _Required and audit-logs."
+    - "Final investigation verdict so far: Cloud Logging cost is driven primarily by Log Storage cost and appears amplified by both high infrastructure log volume and overlapping storage across multiple log buckets."
+  blocking_questions: []
