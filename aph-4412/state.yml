@@ -64,6 +64,13 @@ decisions:
       - "The repo can still carry the post-event HPA logic change in advance, as long as it is not rolled out until after the event."
       - "The approved post-event target is CPU utilization-based scaling with `averageUtilization: 60`, while returning the steady-state floor to `minReplicas: 2`."
       - "Separating the event safety change from the scaling-policy redesign reduces risk and makes it easier to attribute outcomes correctly."
+  startup_probe_strategy:
+    choice: "Keep the current startupProbe for the event; post-event rollout should change `initialDelaySeconds` from `60` to `30` while keeping `periodSeconds: 10`, `timeoutSeconds: 5`, and `failureThreshold: 30`."
+    rationale:
+      - "Historical `startup_complete` data for express (`n=500`, last 14 days) shows p50 `40.6s`, p90 `49.0s`, p95 `53.4s`, p99 `62.0s`, and max `83.4s`."
+      - "The current startup probe does not begin until `60s`, so most pods are already listening before the first check."
+      - "The current startup budget is already roughly `360s` (`60s` initial delay + `30` failures * `10s` period), which is far above observed startup times; increasing `failureThreshold` is unnecessary."
+      - "Reducing `initialDelaySeconds` to `30` should improve average readiness time for scaled pods while preserving a large retry budget for slow starts."
 
 execution:
   git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
@@ -112,6 +119,14 @@ tasks:
     title: "Decide whether to keep HPA CPU AverageValue semantics or retune to AverageUtilization after the event"
     repo: anyobackendapi
     status: completed
+  - id: A10
+    title: "Measure startup_complete distribution and decide post-event startupProbe initialDelaySeconds"
+    repo: anyobackendapi
+    status: completed
+  - id: A11
+    title: "Implement post-event startupProbe initialDelaySeconds=30 alongside the HPA utilization rollout"
+    repo: anyobackendapi
+    status: completed
   - id: A9
     title: "Apply the event-day HPA floor to the live cluster after final operator confirmation"
     repo: ops
@@ -152,5 +167,10 @@ progress:
     - "Post-event HPA retune remains desirable, but it should be based on event-day observations from the newly restored dashboard rather than introduced as a same-day behavioral change."
     - "Repo HPA logic has now been updated for the post-event rollout: infra/gcp/k8s/base/api/hpa.yaml uses CPU `Utilization` with `averageUtilization: 60` and resets `minReplicas: 2` while keeping `maxReplicas: 50` and existing scale behavior."
     - "Local verification evidence for the HPA change: `kubectl kustomize infra/gcp/k8s/base/api` rendered successfully (`rendered_bytes=3504`); cluster-backed `kubectl apply --dry-run=client` could not be used from this machine because `gke-gcloud-auth-plugin` is not installed locally."
+    - "Measured `startup_complete` durations for express over the last 14 days (`n=500`) show min `28.6s`, mean `41.8s`, p50 `40.6s`, p90 `49.0s`, p95 `53.4s`, p99 `62.0s`, max `83.4s`."
+    - "Current startupProbe settings in infra/gcp/k8s/base/api/deployment.yaml are `initialDelaySeconds: 60`, `periodSeconds: 10`, `timeoutSeconds: 5`, `failureThreshold: 30`, which gives roughly `360s` total startup allowance."
+    - "Decision: do not increase startupProbe `failureThreshold`; approved post-event tuning is to reduce `initialDelaySeconds` from `60` to `30` while keeping the other startupProbe fields unchanged."
+    - "Detailed startup probe analysis is captured in aph-4412/notes/2026-03-18-startup-probe-analysis.md."
+    - "Repo post-event rollout manifests are now aligned: infra/gcp/k8s/base/api/hpa.yaml uses CPU `Utilization` with `averageUtilization: 60` and `minReplicas: 2`, and infra/gcp/k8s/base/api/deployment.yaml sets startupProbe `initialDelaySeconds: 30` while keeping `periodSeconds: 10`, `timeoutSeconds: 5`, and `failureThreshold: 30`."
   blocking_questions:
     - "Do we want to apply the event-day HPA floor live now, and if so should it be 12 replicas?"
