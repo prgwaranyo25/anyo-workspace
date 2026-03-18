@@ -1,0 +1,108 @@
+meta:
+  jira: APH-4420
+  title: "Fix POST /app/bookAppointment latency — cache Calendar client + move notifications async"
+  created: "2026-03-18"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi:
+      - src/common/google-meet/googleMeetService.ts
+      - src/core/service/sessionService.ts
+      - src/jobServer/PostSessionBookingWorker.ts
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  route_scope:
+    - "Route in scope: POST /app/bookAppointment"
+    - "Production-facing route: prefer small, reversible fixes only."
+    - "No TDD; do not add tests unless explicitly requested."
+  investigation_policy:
+    - "User is not satisfied with APH-4419 findings — double down on root cause analysis before implementing."
+    - "Re-examine Sentry traces at span level to confirm or challenge the two proposed fixes."
+    - "Look beyond Google Calendar client and notifications — check DB queries, lock contention, AWS KMS calls, and other blocking spans."
+
+decisions:
+  parent_epic:
+    jira: APH-4418
+    title: "API latency reduction - app API inventory and prioritization"
+  parent_investigation:
+    jira: APH-4419
+    title: "Investigate latency for POST /app/bookAppointment and prepare a production-safe fix plan"
+  proposed_fixes_from_aph4419:
+    fix1: "Cache google.calendar client at module level in googleMeetService.ts (~250ms expected gain)"
+    fix2: "Move post-booking notifications async via SESSION_NOTIFICATION_Q (~1500-2000ms expected gain)"
+    user_verdict: "Not satisfied — double down on investigation before implementing"
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4420"
+      pr: "TBD"
+
+tasks:
+  - id: 1
+    title: "Re-examine Sentry span breakdown for multiple slow POST /app/bookAppointment traces"
+    status: completed
+  - id: 2
+    title: "Map all blocking spans in the request path — DB, KMS, Google API, queue, notifications"
+    status: completed
+  - id: 3
+    title: "Validate or challenge proposed Fix 1 (Calendar client caching) with span evidence"
+    status: completed
+  - id: 4
+    title: "Validate or challenge proposed Fix 2 (notifications async) with span evidence"
+    status: completed
+  - id: 5
+    title: "Inspect full code path: bookAppointment handler → sessionService → googleMeetService → PostSessionBookingWorker"
+    status: completed
+  - id: 6
+    title: "Identify any additional root causes not covered by Fix 1 and Fix 2"
+    status: completed
+  - id: 7
+    title: "Produce revised fix plan with ranked options and expected latency impact per fix"
+    status: pending
+  - id: 8
+    title: "Write verification and rollout plan for accepted fixes"
+    status: pending
+
+progress:
+  last_update: "2026-03-18"
+  last_agent: "Claude"
+  carryforward:
+    - "APH-4419 proposed: (1) cache Google Calendar client, (2) move notifications async. User not satisfied — deeper investigation required."
+  evidence:
+    - "Jira ticket APH-4420 exists: Fix POST /app/bookAppointment latency — cache Calendar client + move notifications async."
+    - "Scaffolded aph-4418/aph-4420/ from _template."
+    - "7d Sentry (fresh): count=161, avg=6,425ms, p95=10,588ms, p99=26,627ms."
+    - "24h Sentry (fresh): count=40, avg=6,698ms, p95=16,180ms, p99=27,492ms — currently worse than 7d, not better."
+    - "5 slow traces inspected span-by-span (27,492ms / 25,365ms / 13,291ms / 11,506ms / 10,906ms)."
+    - "Root cause confirmed: saveTherapistAppointment (sessionService.ts:1384) calls await processSessionBooking() synchronously — entire post-booking chain blocks response."
+    - "New finding: Discord sends 3 sequential awaited HTTP calls at the START of processSessionBooking (before Calendar). Dominates tail: up to 16,076ms in one trace."
+    - "New finding: AWS STS us-east-1 credential refresh (~4,500ms) observed in 2/5 traces. Not in APH-4419 findings."
+    - "Confirmed: initGoogleMeetService creates fresh GoogleAuth+calendar client every call; oauth2/v4/token fetched each time (~300ms). getAWSSecret has secretCache so GMAIL_CREDS is cached after first call."
+    - "Confirmed: Google Calendar events.insert always 1,820-2,270ms, present in all 5 traces."
+    - "Confirmed: Gallabox WhatsApp 2 calls and FCM 2-4 calls all sequential awaited in-band."
+    - "APH-4420 Jira fix plan is correct directionally but incomplete: it proposes keeping Calendar synchronous, but Calendar also takes 2,000ms and should be async; it does not address Discord sequential calls (dominant tail cause); it does not address STS spikes."
+    - "Full diagnosis written to: aph-4418/aph-4420/notes/deep-trace-diagnosis.md"
+  blocking_questions:
+    - "How many Discord calls does sendTherapistAppointmentDiscordNotification make and to which channels? (Need sessionNotificationService.ts)"
+    - "Is SESSION_NOTIFICATION_Q in-process (EventEmitter) or a real async queue? Determines whether FCM spans in the same trace are expected."
+    - "What triggers the STS call — SecretsManagerClient credential provider or CredentialManager directly?"

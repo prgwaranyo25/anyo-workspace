@@ -58,12 +58,12 @@ decisions:
       - "The monitoring/dashboard work only just reached a usable state today; we do not yet have enough validated historical HPA replica evidence to choose a utilization target with confidence."
       - "Safer sequence: use a conservative floor for the event, observe real traffic and HPA behavior, then retune HPA semantics afterward using the new dashboard data."
   hpa_retune_strategy:
-    choice: "Keep CPU `AverageValue: 525m` for the event; prepare a post-event repo rollout to CPU utilization-based scaling with `minReplicas: 2` and `averageUtilization: 60`."
+    choice: "Keep CPU `AverageValue` semantics; do not return API HPA to utilization-based scaling unless a new explicit decision record supersedes DRI-016 with production validation evidence."
     rationale:
-      - "The event keeps the current HPA semantics so the live scaling trigger is unchanged during the highest-risk window."
-      - "The repo can still carry the post-event HPA logic change in advance, as long as it is not rolled out until after the event."
-      - "The approved post-event target is CPU utilization-based scaling with `averageUtilization: 60`, while returning the steady-state floor to `minReplicas: 2`."
-      - "Separating the event safety change from the scaling-policy redesign reduces risk and makes it easier to attribute outcomes correctly."
+      - "DRI-016 and migration-state both record that API autoscaling was moved to `AverageValue` specifically to keep scaling intent independent of future CPU request changes."
+      - "With request `300m`, `averageUtilization: 60` would scale at `180m`, reintroducing request-coupled behavior."
+      - "Any later CPU request change would silently retune production autoscaling behavior even if traffic were unchanged."
+      - "A future return to utilization-based scaling now requires a superseding explicit decision record and production validation rather than an implicit post-event config change."
   startup_probe_strategy:
     choice: "Keep the current startupProbe for the event; post-event rollout should change `initialDelaySeconds` from `60` to `30` while keeping `periodSeconds: 10`, `timeoutSeconds: 5`, and `failureThreshold: 30`."
     rationale:
@@ -124,7 +124,7 @@ tasks:
     repo: anyobackendapi
     status: completed
   - id: A11
-    title: "Implement post-event startupProbe initialDelaySeconds=30 alongside the HPA utilization rollout"
+    title: "Implement post-event startupProbe initialDelaySeconds=30 alongside any later approved API autoscaling rollout"
     repo: anyobackendapi
     status: completed
   - id: A9
@@ -184,5 +184,9 @@ progress:
     - "Focused prod-state monitoring plan with explicit vars now shows only the intended startup-observability delta: `1 to add, 1 to change, 0 to destroy` (`google_logging_metric.startup_duration` create, `google_monitoring_dashboard.backend_ops` update)."
     - "Applied the startup-observability monitoring change in prod with explicit vars; Terraform reported `Apply complete! Resources: 1 added, 1 changed, 0 destroyed.` for `google_logging_metric.startup_duration` and `google_monitoring_dashboard.backend_ops`."
     - "Post-apply verification passed: `terraform plan -input=false -lock=false ...` returned `No changes. Your infrastructure matches the configuration.`, and `terraform state show google_logging_metric.startup_duration` confirms metric `startup_duration_ms` exists in project `anyo-infra`."
+    - "Updated Confluence page `DRI-016: GKE Workload Resource Sizing from 90-Day Production Baseline (ECS + ElastiCache)` directly at page `454950915` (version `5` -> `6`) to restore the request-independent autoscaling rationale for API HPA."
+    - "The Confluence DRI now explicitly states that API HPA uses `AverageValue` to keep autoscaling independent of future CPU request changes, adds a clarification section documenting why `averageUtilization: 60` on request `300m` would scale at `180m`, and records that any future return to utilization-based scaling requires a new explicit decision record with production validation."
+    - "Local repo docs are now synced to the same clarification: docs/infra-migration/decisions/DRI-016-gke-workload-rightsizing-90d-production-baseline.md and docs/infra-migration/migration-state.yaml both reinforce that API autoscaling remains request-independent and that any return to utilization-based scaling requires a superseding decision with production validation."
+    - "Current repo manifests still carry the earlier post-event utilization-based HPA proposal, so docs and ticket state now intentionally flag that proposal as needing explicit re-evaluation before rollout rather than treating it as approved policy."
   blocking_questions:
     - "Do we want to apply the event-day HPA floor live now, and if so should it be 12 replicas?"
