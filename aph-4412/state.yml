@@ -1,0 +1,156 @@
+meta:
+  jira: APH-4412
+  title: "Investigate anyo-api 503s when GKE CPU requested usage reaches parity with actual usage"
+  created: "2026-03-18"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi:
+      - infra/gcp/k8s/base/api/
+      - infra/gcp/terraform/stacks/gclb/
+      - infra/gcp/terraform/stacks/monitoring/
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  scope:
+    - "Investigate intermittent anyo-api 503s in prod on GKE Autopilot."
+    - "Correlate Sentry-identified instances with load balancer, backend health, HPA, and pod-level signals."
+    - "Use deploy-runner VM as the path to access cluster diagnostics."
+    - "Restore and correct prod monitoring dashboards needed for event-day capacity planning."
+    - "Prepare a safe event-day HPA floor recommendation and corresponding repo config change."
+  safety:
+    - "Avoid direct pod/workload restarts or destructive GCP actions."
+    - "Limit prod mutations to approved monitoring/dashboard Terraform reconciliation and config-only capacity updates."
+    - "Do not retrieve or store secrets, tokens, or PII."
+
+decisions:
+  cluster:
+    choice: "anyo-gke-autopilot-as1"
+  namespace:
+    choice: "anyo-backend"
+  workload:
+    choice: "anyo-api"
+  debugging_path:
+    choice: "Access cluster diagnostics via deploy-runner VM only."
+  monitoring_path:
+    choice: "Use Terraform-managed Cloud Monitoring dashboard plus Metrics Explorer data for event sizing."
+  likely_hypotheses:
+    - "HPA threshold and CPU request mismatch delays scale-out until pods are already saturated."
+    - "Backend health/readiness flaps cause GCLB to temporarily see no healthy endpoints and emit 503s."
+    - "Another infrastructure bottleneck exists in load balancer, NEG health, or pod lifecycle."
+  event_day_capacity_strategy:
+    choice: "Increase HPA minReplicas for the event first; do not change HPA metric semantics on the same day unless explicitly approved."
+    rationale:
+      - "Current HPA behavior is understood well enough to add warm capacity safely, but not well enough to change scaling semantics on the day of the event."
+      - "The live HPA still scales on CPU `AverageValue: 525m`, while the pod spec requests 300m CPU and live Autopilot-adjusted requests were observed at 385m; switching to utilization-based scaling would materially change the scale-out trigger rather than just adding baseline capacity."
+      - "For a same-day event, raising `minReplicas` is additive, predictable, and reversible. Changing from `AverageValue` to `AverageUtilization` changes both scale-up and steady-state behavior and can introduce unexpected oscillation or under/over-scaling if the target is not calibrated."
+      - "Dashboard evidence so far shows CPU request utilization spikes below hard saturation and memory remains comfortably below pressure, so the urgent reliability need is more warm pods at the start of the event, not a policy redesign under time pressure."
+      - "The monitoring/dashboard work only just reached a usable state today; we do not yet have enough validated historical HPA replica evidence to choose a utilization target with confidence."
+      - "Safer sequence: use a conservative floor for the event, observe real traffic and HPA behavior, then retune HPA semantics afterward using the new dashboard data."
+  hpa_retune_strategy:
+    choice: "Keep CPU `AverageValue: 525m` for the event; prepare a post-event repo rollout to CPU utilization-based scaling with `minReplicas: 2` and `averageUtilization: 60`."
+    rationale:
+      - "The event keeps the current HPA semantics so the live scaling trigger is unchanged during the highest-risk window."
+      - "The repo can still carry the post-event HPA logic change in advance, as long as it is not rolled out until after the event."
+      - "The approved post-event target is CPU utilization-based scaling with `averageUtilization: 60`, while returning the steady-state floor to `minReplicas: 2`."
+      - "Separating the event safety change from the scaling-policy redesign reduces risk and makes it easier to attribute outcomes correctly."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4412"
+      pr: "PR-Backend (only if config changes are later approved)"
+
+tasks:
+  - id: A1
+    title: "Create APH-4412 ticket context and capture investigation scope"
+    repo: workspace
+    status: completed
+  - id: A2
+    title: "Verify read-only access path through deploy-runner VM and collect live prod evidence"
+    repo: ops
+    status: completed
+  - id: A3
+    title: "Correlate 503 windows with GCLB backend health, HPA behavior, pod readiness, and CPU usage"
+    repo: ops
+    status: completed
+  - id: A4
+    title: "Summarize root cause and propose safe next actions"
+    repo: workspace
+    status: completed
+  - id: A5
+    title: "Confirm Anyo Backend Ops dashboard drift and prepare Terraform-based restoration path"
+    repo: anyobackendapi
+    status: completed
+  - id: A6
+    title: "Restore missing CPU, memory, and HPA dashboard widgets in prod and use them for event capacity sizing"
+    repo: anyobackendapi
+    status: completed
+  - id: A7
+    title: "Reconcile monitoring stack code/state drift before any future full-stack apply"
+    repo: anyobackendapi
+    status: completed
+  - id: A8
+    title: "Decide whether to keep HPA CPU AverageValue semantics or retune to AverageUtilization after the event"
+    repo: anyobackendapi
+    status: completed
+  - id: A9
+    title: "Apply the event-day HPA floor to the live cluster after final operator confirmation"
+    repo: ops
+    status: pending
+
+progress:
+  last_update: "2026-03-18"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Jira created: APH-4412"
+    - "Initial repo inspection points to current anyo-api CPU request=300m in infra/gcp/k8s/base/api/deployment.yaml and HPA target averageValue=525m in infra/gcp/k8s/base/api/hpa.yaml."
+    - "Verified access via deploy-runner VM using IAP-backed SSH; kubectl context on runner is gke_anyo-infra_asia-south1_anyo-gke-autopilot-as1."
+    - "Live deployment shows GKE Autopilot adjusted anyo-api CPU request from 300m to 385m while keeping HPA target at 525m; HPA status sampled 377m average CPU and 98% averageUtilization at 2 replicas without scaling."
+    - "Recent load-balancer 503s in anyo-infra all show statusDetails=backend_connection_closed_before_data_sent_to_client, with failures hitting both pod IPs 10.110.0.70 and 10.110.0.12."
+    - "Both live anyo-api pods report repeated readiness probe failures on /health with context deadline exceeded; xrdgc last seen 31m ago (x60 over 26h) and 26hs9 last seen 17m ago (x21 over 25h)."
+    - "At least one readiness failure aligns directly with a 503 window: LB logs show 503s on 10.110.0.70 around 06:04Z while the same pod reports recent readiness timeout events."
+    - "Live Cloud Monitoring dashboard 'Anyo Backend Ops' in anyo-infra currently contains only 2 widgets (Uptime Check and GCLB 5xx), while Terraform defines 8 widgets including CPU Request Utilization, Memory Request Utilization, and API HPA Scale Events."
+    - "Dashboard drift is confirmed via `gcloud monitoring dashboards list --project=anyo-infra --format=json --quiet`; Terraform ownership remains in infra/gcp/terraform/stacks/monitoring/main.tf."
+    - "Detailed dashboard drift notes captured in aph-4412/notes/2026-03-18-dashboard-drift.md."
+    - "Read-only prod-state plan for infra/gcp/terraform/stacks/monitoring with `-lock=false` shows the dashboard would be restored in place, but a full stack apply is unsafe for a focused fix right now: plan summary is 2 add / 2 change / 4 destroy."
+    - "The same monitoring plan would create `google_logging_metric.startup_duration` and temporary alert `google_monitoring_alert_policy.discord_test`, and destroy live Cloud Build Pub/Sub relay resources that still exist in state but are absent from current code."
+    - "Monitoring Terraform was reconciled in infra/gcp/terraform/stacks/monitoring/main.tf to restore Cloud Build relay resources to code and remove the undeployed startup metric/widgets plus temporary `discord_test` alert."
+    - "Fresh verification after the code update: `terraform fmt` and `terraform validate` pass for the monitoring stack, and the prod-state plan with `-lock=false` is reduced to 0 add / 2 change / 0 destroy (`google_monitoring_dashboard.backend_ops` and `google_monitoring_alert_policy.gclb_latency`)."
+    - "A stale GCS Terraform lock at gs://anyo-tfstate-prod/monitoring/default.tflock was blocking apply; lock payload showed OperationTypePlan from 2026-02-24T06:16:55Z and was removed before retrying."
+    - "First apply retry partially succeeded: `google_monitoring_alert_policy.gclb_latency` updated, while dashboard apply failed because Cloud Monitoring dashboard JSON rejects `xyChart.dataSets[].title`."
+    - "Terraform dashboard HPA series labels were corrected from `title` to `legendTemplate`, after which `terraform validate` passed, prod-state plan showed only the dashboard update, and apply completed successfully."
+    - "Final post-apply convergence check for infra/gcp/terraform/stacks/monitoring returned: `No changes. Your infrastructure matches the configuration.`"
+    - "Live dashboard HPA chart first failed because `k8s_hpa` is not a valid monitored resource type for HPA replica charts; follow-up investigation showed the correct replica-count metrics are Prometheus kube-state-metrics series, not `kubernetes.io/hpa/*` metrics."
+    - "Monitoring Terraform was updated to query HPA desired/current replicas via `resource.type=\"prometheus_target\"`, using `prometheus.googleapis.com/kube_horizontalpodautoscaler_status_desired_replicas/gauge` and `...current_replicas/gauge` filtered by `metric.labels.namespace=\"anyo-backend\"` and `metric.labels.horizontalpodautoscaler=\"anyo-api-hpa\"`."
+    - "Aligned monitoring tfvars to current prod setup by setting `cluster_name=anyo-gke-autopilot-as1`, `api_workload_name=anyo-api`, and `api_hpa_max_replicas=50` in infra/gcp/terraform/tfvars/monitoring-asia-south1.common.tfvars."
+    - "Post-fix verification: `terraform validate` passed, dashboard apply succeeded, and final prod-state `terraform plan -lock=false ...` returned `No changes. Your infrastructure matches the configuration.`"
+    - "Live dashboard JSON now confirms the HPA widget uses the Prometheus-backed metric filters rather than the earlier `kubernetes.io/hpa/*` queries; any screenshot still showing the old query is browser-stale rather than prod-state drift."
+    - "For today's event, repo HPA floor in infra/gcp/k8s/base/api/hpa.yaml was raised from `minReplicas: 2` to `minReplicas: 10` while keeping `maxReplicas: 50`."
+    - "Event-day sizing rationale: historical appEventsLog outlier windows reached roughly 84 and 162 unique APP_OPEN users in 5-minute buckets; current dashboard shows API CPU request utilization spikes below 0.8 and memory comfortably below 0.3, but the HPA itself only scales on average CPU `525m`, which is materially higher than request-utilization levels shown in the dashboard, so extra warm capacity is safer than waiting for reactive scale-up."
+    - "Recommended live event floor is therefore 10 pods, with 12 as the fallback if the entry wave is expected to be very front-loaded in the first 15-30 minutes."
+    - "The decision to defer a switch from CPU `AverageValue: 525m` to utilization-based scaling is intentional: changing HPA metric semantics today would alter the scale trigger itself, while increasing `minReplicas` only adds predictable warm capacity and keeps reactive behavior otherwise unchanged."
+    - "Post-event HPA retune remains desirable, but it should be based on event-day observations from the newly restored dashboard rather than introduced as a same-day behavioral change."
+    - "Repo HPA logic has now been updated for the post-event rollout: infra/gcp/k8s/base/api/hpa.yaml uses CPU `Utilization` with `averageUtilization: 60` and resets `minReplicas: 2` while keeping `maxReplicas: 50` and existing scale behavior."
+    - "Local verification evidence for the HPA change: `kubectl kustomize infra/gcp/k8s/base/api` rendered successfully (`rendered_bytes=3504`); cluster-backed `kubectl apply --dry-run=client` could not be used from this machine because `gke-gcloud-auth-plugin` is not installed locally."
+  blocking_questions:
+    - "Do we want to apply the event-day HPA floor live now, and if so should it be 12 replicas?"
