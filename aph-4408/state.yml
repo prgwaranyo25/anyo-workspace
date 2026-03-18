@@ -1,0 +1,93 @@
+meta:
+  jira: APH-4408
+  title: "Backend - Email Audience API"
+  created: "2026-03-17"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi: ../anyobackendapi
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  scope:
+    - "Add backend APIs for group email audience list, CSV upload, and bulk delete."
+    - "Validate uploaded emails for format, partner whitelist domain, dedupe, and 10,000-per-group limit."
+    - "Keep existing invitedClients/invitedPartners/public behavior backward compatible."
+  non_goals:
+    - "No expert portal UI changes in this ticket."
+    - "No TDD workflow; use API-based verification."
+  compatibility:
+    - "No response contract break for existing group/challenge consumers."
+    - "Email audience remains separate from invitedClients after signup."
+
+decisions:
+  api_contract:
+    choice: "Use dedicated admin expert endpoints under groups for email audience management."
+    endpoints:
+      - "GET /admin/experts/physical-fitness/groups/:groupId/email-audience"
+      - "POST /admin/experts/physical-fitness/groups/:groupId/email-audience/upload"
+      - "POST /admin/experts/physical-fitness/groups/:groupId/email-audience/bulk-delete"
+  csv_contract:
+    choice: "Support single-column CSV with required header 'email'."
+  validation_rules:
+    choice: "Email format valid, domain in partner whitelistedDomains, dedupe case-insensitive, hard cap 10,000 entries per group."
+  storage_model:
+    choice: "Store per-group email rows in separate collection with unique index (groupId + emailLower)."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      api_based_testing: true
+      note: "Do NOT follow TDD. Prefer API-based testing and targeted verification commands for backend flows."
+    verification_policy:
+      note: "Use API-based verification for upload/list/bulk-delete/eligibility paths; run targeted lint/typecheck when stable."
+    worktree_policy:
+      required: false
+      note: "No git worktree required."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4408"
+      pr: "PR-Backend-EmailAudience"
+
+tasks:
+  - id: B1
+    title: "Finalize backend API contract, CSV flow, validation rules, and storage/index design"
+    repo: anyobackendapi
+    status: completed
+  - id: B2
+    title: "Implement email audience APIs: list, CSV upload, bulk delete"
+    repo: anyobackendapi
+    status: completed
+  - id: B3
+    title: "Integrate email audience mapping into group/challenge eligibility resolution"
+    repo: anyobackendapi
+    status: completed
+  - id: B4
+    title: "Run API-based verification for validation, dedupe, whitelist, limit, and eligibility paths"
+    repo: anyobackendapi
+    status: in_progress
+
+progress:
+  last_update: "2026-03-17"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Child workspace folder scaffolded from _template for APH-4408."
+    - "Backend API contract, CSV format, validation rules, and storage/index design finalized in state.yml."
+    - "Implemented backend email audience APIs: list, CSV upload, and bulk delete for expert group management."
+    - "Integrated email-audience eligibility in app group list, group detail, join, and challenge fetch paths."
+    - "Backend typecheck passed with pnpm tsc --noEmit --pretty false."
+  blocking_questions: []

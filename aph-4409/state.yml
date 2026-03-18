@@ -1,0 +1,88 @@
+meta:
+  jira: APH-4409
+  title: "Expert Portal FE - Email Audience UI"
+  created: "2026-03-17"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyoexpertportal: ../anyoexpertportal
+    anyobackendapi: ../anyobackendapi
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  scope:
+    - "Add Email Audiences management section in expert group edit flow."
+    - "Provide sample CSV download and CSV upload UX for email audience import."
+    - "Show current group email audience and support checkbox-based bulk delete."
+    - "Display backend validation outcomes for invalid rows and rejected domains."
+  non_goals:
+    - "No backend data model changes in this ticket (handled by APH-4408)."
+    - "No TDD workflow; use manual FE verification and targeted lint/typecheck."
+  compatibility:
+    - "Do not regress existing invitedClients/invitedPartners targeting UI."
+    - "Do not break existing create/edit group flows."
+
+decisions:
+  ux_placement:
+    choice: "Add Email Audiences as a dedicated section in group edit visibility/audience flow."
+  upload_flow:
+    choice: "Use sample CSV template download + CSV upload; send file to backend upload endpoint and render row-level validation summary."
+  list_and_delete:
+    choice: "Load existing emails from backend list endpoint with selectable rows and bulk delete action."
+  csv_contract:
+    choice: "Single required header: email"
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      api_based_testing: true
+      note: "Do NOT follow TDD. Use manual FE verification plus API-response driven validation checks."
+    verification_policy:
+      note: "Verify upload/list/bulk-delete UX manually; run targeted lint/typecheck when stable."
+    worktree_policy:
+      required: false
+      note: "No git worktree required."
+  branch_plan:
+    anyoexpertportal:
+      base: "origin/main"
+      branch: "aph-4409"
+      pr: "PR-ExpertPortal-EmailAudience"
+
+tasks:
+  - id: F1
+    title: "Finalize expert portal UX for sample CSV download, upload, current audience listing, and bulk delete"
+    repo: anyoexpertportal
+    status: completed
+  - id: F2
+    title: "Implement email audience management UI and integrate with backend API endpoints"
+    repo: anyoexpertportal
+    status: completed
+  - id: F3
+    title: "Run manual FE verification and targeted lint/typecheck for the email audience flow"
+    repo: anyoexpertportal
+    status: in_progress
+
+progress:
+  last_update: "2026-03-17"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Child workspace folder scaffolded from _template for APH-4409."
+    - "Expert portal UX scope finalized: sample CSV download, upload, current audience list, and bulk delete flow."
+    - "Implemented Email Audience section in group visibility step with sample CSV download, drag-drop upload, list view, and bulk delete."
+    - "Integrated expert portal group service with backend email audience list/upload/bulk-delete APIs."
+    - "Expert portal typecheck currently fails due pre-existing .next route validator errors unrelated to this ticket."
+  blocking_questions:
+    - "Typecheck is failing due pre-existing .next route validator issues unrelated to APH-4409. Confirm if manual verification + targeted checks are sufficient for closure."

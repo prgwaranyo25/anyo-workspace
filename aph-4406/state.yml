@@ -1,0 +1,131 @@
+meta:
+  jira: APH-4406
+  title: "Support email-based audience targeting for groups and challenges independent of signup status"
+  created: "2026-03-17"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi: ../anyobackendapi
+    anyoexpertportal: ../anyoexpertportal
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  scope:
+    - "Support audience targeting by email address before install/signup."
+    - "Cover group list/detail/join and challenge list/fetch/join access paths."
+    - "Preserve existing public, invitedClients, and invitedPartners behavior."
+    - "Expert Portal: Email audience management UI (CSV upload, bulk delete)"
+  non_goals:
+    - "Do not add admin/expert UI for raw email-list editing in this ticket."
+    - "Do not count email-targeted users toward totalMembers before signup."
+    - "Expert Portal: Email audience management is covered in child tickets"
+  compatibility:
+    - "Keep response contracts backward compatible."
+    - "Do not copy email targeting into invitedClients after signup."
+
+decisions:
+  source_of_truth:
+    choice: "Model email-targeted access separately from invitedClients/invitedPartners."
+  likely_approach:
+    choice: "Introduce a separate email-to-group audience mapping collection/service path and resolve access from email targeting at read/join time."
+  child_tickets:
+    - key: "APH-4408"
+      title: "Backend - Email Audience API"
+      purpose: "Create API endpoints for email audience management with CSV upload and bulk delete"
+    - key: "APH-4409"
+      title: "Expert Portal FE - Email Audience UI"
+      purpose: "Create expert portal UI for managing email audiences with CSV upload/download"
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      api_based_testing: true
+      note: "Do NOT follow TDD. Prefer API-based testing for backend flows; use manual FE checks and targeted lint/typecheck when stable."
+    verification_policy:
+      note: "Use API-based verification for backend changes, manual FE verification for portal flows, and targeted lint/typecheck only when stable."
+    worktree_policy:
+      required: false
+      note: "No git worktree required for this ticket."
+  parallel_delivery:
+    enabled: true
+    note: "Backend and expert portal may progress in parallel. Keep at most one active backend task and one active FE task at the same time."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4408"
+      pr: "PR-Backend"
+    anyoexpertportal:
+      base: "origin/main"
+      branch: "aph-4409"
+      pr: "PR-ExpertPortal"
+
+tasks:
+  - id: P1
+    title: "Expand APH-4406 plan to cover backend and expert portal split delivery"
+    repo: workspace
+    status: completed
+  - id: P2
+    title: "Create child tickets APH-4408 and APH-4409 and capture delivery split in state"
+    repo: workspace
+    status: completed
+  - id: B1
+    title: "Finalize backend API contract, CSV flow, validation rules, and storage/index design for email audiences"
+    repo: anyobackendapi
+    status: completed
+  - id: B2
+    title: "Implement backend email audience management APIs for list, CSV upload, and bulk delete"
+    repo: anyobackendapi
+    status: completed
+  - id: B3
+    title: "Extend group and challenge eligibility resolution to include email audience mapping without breaking existing access paths"
+    repo: anyobackendapi
+    status: completed
+  - id: B4
+    title: "Add or update API-based verification for upload validation, dedupe, whitelist enforcement, bulk delete, and eligibility flows"
+    repo: anyobackendapi
+    status: in_progress
+  - id: F1
+    title: "Finalize expert portal UX for sample CSV download, upload, current audience listing, and bulk delete"
+    repo: anyoexpertportal
+    status: completed
+  - id: F2
+    title: "Implement expert portal email audience management UI and integrate with backend APIs"
+    repo: anyoexpertportal
+    status: completed
+  - id: F3
+    title: "Run manual FE verification and targeted lint/typecheck for the email audience flow"
+    repo: anyoexpertportal
+    status: in_progress
+  - id: C1
+    title: "Coordinate backend and FE integration, capture evidence, and close parent ticket scope"
+    repo: workspace
+    status: pending
+
+progress:
+  last_update: "2026-03-17"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Workspace ticket folder scaffolded from _template."
+    - "Jira issue APH-4406 reviewed: acceptance criteria captured in constraints/tasks."
+    - "Scoped APH-4406 into parallel backend (APH-4408) and expert portal (APH-4409) delivery tracks."
+    - "Defined CSV-based email audience management flow with backend validation, sample download, and bulk delete."
+    - "Created child workspace folders aph-4408 and aph-4409 from _template."
+    - "Completed planning tasks B1 and F1 via child-ticket state definitions and finalized API/UX contracts."
+    - "Completed B2: backend email audience APIs implemented for list/upload/bulk-delete."
+    - "Completed B3: email audience integrated into app group/challenge eligibility and join flows."
+    - "Completed F2: expert portal Email Audience section implemented with sample CSV, upload, list, and bulk delete actions."
+  blocking_questions:
+    - "Expert portal repo has pre-existing .next route validator typecheck errors unrelated to APH-4406/APH-4409; confirm whether manual FE verification is acceptable to close F3/C1."
