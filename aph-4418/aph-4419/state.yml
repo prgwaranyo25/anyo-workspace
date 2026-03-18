@@ -1,0 +1,80 @@
+meta:
+  jira: APH-4419
+  title: "Investigate latency for POST /app/bookAppointment and prepare a production-safe fix plan"
+  created: "2026-03-18"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi:
+      - src/server.ts
+      - src/core/routes/index.ts
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  route_scope:
+    - "Route in scope: POST /app/bookAppointment"
+    - "This ticket is investigation and planning first; do not implement code changes until route context is fully loaded and findings are documented."
+    - "Follow aph-4418/AGENTS.md for deep route analysis and brainstorming requirements."
+  safety:
+    - "Production-facing route: prefer small, reversible fix options only."
+    - "Do not rely on a single sampled slow trace."
+
+decisions:
+  parent_epic:
+    jira: APH-4418
+    title: "API latency reduction - app API inventory and prioritization"
+  route_identity:
+    transaction: "POST /app/bookAppointment"
+    bucket: "booking-session"
+  investigation_goal:
+    choice: "Understand why POST /app/bookAppointment is slow before proposing a safe fix."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4419"
+      pr: "TBD"
+
+tasks:
+  - id: 1
+    title: "Gather Sentry route metrics for 24h and 7d windows"
+    status: pending
+  - id: 2
+    title: "Inspect multiple slow traces and dominant spans for POST /app/bookAppointment"
+    status: pending
+  - id: 3
+    title: "Inspect code path from route to handler, services, and dependencies"
+    status: pending
+  - id: 4
+    title: "Rank root-cause hypotheses and brainstorm safe fix options"
+    status: pending
+  - id: 5
+    title: "Write verification and rollout plan"
+    status: pending
+
+progress:
+  last_update: "2026-03-18"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Jira child ticket created and linked to epic: APH-4419."
+    - "Initial Sentry evidence already available from epic: POST /app/bookAppointment shows about 158 requests over 7d with avg ~6422ms, p95 ~10557ms, p99 ~26669ms."
+  blocking_questions: []

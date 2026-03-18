@@ -1,0 +1,205 @@
+meta:
+  jira: APH-4418
+  title: "API latency reduction - app API inventory and prioritization"
+  created: "2026-03-18"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi:
+      - src/server.ts
+      - src/core/routes/index.ts
+      - src/anyo-circles/routes/appRoutes.ts
+      - src/anyo-lyfis/routes/appRoutes.ts
+      - src/anyo-rhythm/routes/appRoutes.ts
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth for the epic. Keep accurate, minimal, and high level.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "Keep detailed implementation tasks in child ticket state.yml files."
+    - "Track shared blockers and cross-ticket decisions here."
+
+constraints:
+  scope:
+    - "Phase 1 is app APIs only; expert and admin APIs are deferred."
+    - "Use src/server.ts as the routing entry point to avoid context overload."
+    - "Do not implement code changes in anyobackendapi during this epic setup phase."
+    - "Use state.yml as the epic source of truth and keep detailed route inventory in ticket-local notes."
+    - "Epic-level execution does not require a git worktree."
+    - "No TDD for this epic; do not add tests unless explicitly requested."
+    - "Each investigated app route will get its own child ticket; do not batch multiple production route fixes into one child ticket."
+    - "Keep all cross-route observations, prioritization, and shared evidence in aph-4418/."
+  analysis_policy:
+    - "Route inventory must be confirmed from mounted routers, not inferred only from Sentry transaction names."
+    - "Sentry is the primary latency evidence source; code inspection is used to group and prioritize later child tickets."
+    - "Each route investigation must examine multiple traces, slow spans, and code-path dependencies before proposing fixes."
+    - "Brainstorming is required for every route before implementation; do not jump from top-level metrics straight to a code change."
+
+decisions:
+  phase_order:
+    choice: "App APIs first, then expert-facing APIs, then admin APIs."
+  delivery_strategy:
+    choice: "One route per child ticket for production safety."
+    rationale:
+      - "We need to understand what is wrong with each route before proposing a fix."
+      - "We want small, reversible production-facing changes instead of broad multi-route changes."
+      - "Shared patterns can be noted at the epic level, but implementation should move route by route."
+  routing_entrypoint:
+    choice: "Start from src/server.ts and follow only routers mounted for app traffic."
+    mounted_app_routers:
+      - "src/core/routes/index.ts via coreRouter"
+      - "src/anyo-circles/routes/appRoutes.ts via appCirclesRouter"
+      - "src/anyo-lyfis/routes/appRoutes.ts via appLyfisRouter"
+      - "src/anyo-rhythm/routes/appRoutes.ts via appRhythmRouter"
+  current_inventory:
+    raw_route_registrations: 250
+    unique_app_routes: 248
+    notes_file: "aph-4418/notes/app-route-inventory.md"
+    caveats:
+      - "Counts include /app/u/* unauth app endpoints because they are part of app flows."
+      - "Two duplicate registrations exist in LYFIS app routes (global-insights and get/shared/items)."
+  app_priority_buckets:
+    - key: booking-session
+      rationale: "High user impact with materially slow p95/p99 tails in Sentry."
+    - key: high-volume-read-list
+      rationale: "Large traffic share and meaningful latency tails; likely best broad user-impact wins."
+    - key: ai-chat
+      rationale: "Sentry traces already show gen_ai.chat and http.client latency concentration."
+    - key: profile-update-write-heavy
+      rationale: "Several app writes show very high tails despite lower volume."
+    - key: groups-events-fitness
+      rationale: "Secondary domain bucket for slower but still meaningful app endpoints."
+  sentry_time_windows:
+    primary: "7d for stable route ranking, 24h for current hot regressions"
+  route_ticket_strategy:
+    child_ticket_unit: "one route per child ticket"
+    instruction_file: "aph-4418/AGENTS.md"
+    preferred_route_diagnosis_skill: "anyobackendapi-api-latency-diagnosis"
+    preferred_route_workflow: ".opencode/skills/anyobackendapi-api-latency-diagnosis/SKILL.md"
+    prioritization_order:
+      - "User impact first"
+      - "Then p95/p99 latency"
+      - "Then request count / frequency"
+      - "Then ease of observability from Sentry and code path clarity"
+    first_route_candidates:
+      - route: "POST /app/bookAppointment"
+        bucket: "booking-session"
+        count_7d: 158
+        avg_ms_7d: 6422
+        p95_ms_7d: 10557
+        p99_ms_7d: 26669
+      - route: "POST /app/packs/assessment/chat"
+        bucket: "ai-chat"
+        count_7d: 69
+        avg_ms_7d: 12848
+        p95_ms_7d: 21571
+        p99_ms_7d: 25854
+      - route: "POST /app/v2/healthMetrics/update/steps"
+        bucket: "profile-update-write-heavy"
+        count_7d: 17
+        avg_ms_7d: 10373
+        p95_ms_7d: 30743
+        p99_ms_7d: 31070
+      - route: "POST /app/updateAppointment"
+        bucket: "profile-update-write-heavy"
+        count_7d: 30
+        avg_ms_7d: 12285
+        p95_ms_7d: 30000
+        p99_ms_7d: 30118
+      - route: "POST /app/circles/profile/update"
+        bucket: "profile-update-write-heavy"
+        count_7d: 132
+        avg_ms_7d: 5415
+        p95_ms_7d: 15219
+        p99_ms_7d: 21628
+      - route: "GET /app/circles/generateProfileName"
+        bucket: "profile-update-write-heavy"
+        count_7d: 445
+        avg_ms_7d: 6279
+        p95_ms_7d: 11279
+        p99_ms_7d: 16650
+      - route: "GET /app/therapist/slots/:id"
+        bucket: "booking-session"
+        count_7d: 578
+        avg_ms_7d: 1580
+        p95_ms_7d: 5426
+        p99_ms_7d: 8402
+      - route: "POST /app/v2/therapy/plans/checkout"
+        bucket: "booking-session"
+        count_7d: 445
+        avg_ms_7d: 811
+        p95_ms_7d: 5017
+        p99_ms_7d: 8481
+      - route: "POST /app/therapist/meta/batch"
+        bucket: "high-volume-read-list"
+        count_7d: 1266
+        avg_ms_7d: 2802
+        p95_ms_7d: 5933
+        p99_ms_7d: 7204
+      - route: "GET /app/rhythm/flow/card"
+        bucket: "high-volume-read-list"
+        count_7d: 13048
+        avg_ms_7d: 808
+        p95_ms_7d: 4047
+        p99_ms_7d: 9207
+      - route: "GET /app/rhythm/flow/insights"
+        bucket: "high-volume-read-list"
+        count_7d: 2922
+        avg_ms_7d: 1279
+        p95_ms_7d: 3824
+        p99_ms_7d: 10543
+      - route: "POST /app/forums/v2/grid"
+        bucket: "high-volume-read-list"
+        count_7d: 16488
+        avg_ms_7d: 1053
+        p95_ms_7d: 3303
+        p99_ms_7d: 6693
+  next_step:
+    choice: "Create child tickets route by route from the prioritized candidate list, keeping shared observations only in APH-4418."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+    worktree_policy:
+      required: false
+      note: "No git worktree required for epic-level route inventory and prioritization work."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4418"
+      pr: "TBD after child tickets"
+
+child_tickets:
+  - jira: APH-4419
+    title: "Investigate latency for POST /app/bookAppointment and prepare a production-safe fix plan"
+    route: "POST /app/bookAppointment"
+    bucket: "booking-session"
+    status: active
+    notes:
+      - "First route selected for deep investigation under the route-per-child strategy."
+
+progress:
+  last_update: "2026-03-18"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Epic folder scaffolded from _epic_template as aph-4418/."
+    - "Verified app routing entry point in anyobackendapi/src/server.ts: coreRouter, appCirclesRouter, appLyfisRouter, and appRhythmRouter are the app-facing mounted routers."
+    - "Derived app route inventory from mounted routers: 250 raw app route registrations, 248 unique app routes."
+    - "7d Sentry spans query on anyo/anyobackend with span.op:http.server environment:production used to identify app route latency candidates before child-ticket breakdown."
+    - "Current app latency leaders from Sentry include POST /app/bookAppointment, POST /app/packs/assessment/chat, GET /app/rhythm/flow/card, GET /app/rhythm/flow/insights, POST /app/forums/v2/grid, POST /app/profile/update, POST /app/circles/profile/update, and POST /app/v2/healthMetrics/update/steps."
+    - "24h production Sentry view confirms current high-volume app traffic centers on /app/u/v2/therapists, /app/stamp/events, /app/userAppScreenTime, /app/forums/v2/grid, /app/circles/grid/post, /app/rhythm/flow/profile, and /app/health-calendar/get."
+    - "7d production Sentry view confirms app tail-latency leaders include /app/v2/healthMetrics/update/steps, /app/updateAppointment, /app/packs/assessment/chat, /app/rhythm-config/upsert, /app/circles/profile/update, /app/circles/generateProfileName, /app/bookAppointment, /app/therapist/meta/batch, /app/therapist/slots/:id, /app/v2/therapy/plans/checkout, /app/profile/update, /app/rhythm/flow/card, /app/rhythm/flow/insights, and /app/forums/v2/grid."
+    - "Epic design changed from bucket-level child tickets to one-route-per-child delivery for production safety; shared route observations remain in aph-4418/."
+    - "Epic-local instruction file now hands route diagnosis to the anyobackendapi-api-latency-diagnosis skill while keeping app-first scope, one-route-per-child delivery, and production-safety notes local to APH-4418."
+    - "Created first child ticket APH-4419 for POST /app/bookAppointment and scaffolded aph-4418/aph-4419/."
+  blocking_questions: []
