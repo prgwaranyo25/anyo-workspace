@@ -1,0 +1,26 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../anyobackendapi"
+		},
+		{
+			"path": "../anyoexpertportal"
+		},
+		{
+			"path": "../anyo-portal"
+		},
+		{
+			"path": "../anyocustomerapp"
+		},
+		{
+			"path": "../anyopwaui"
+		},
+		{
+			"path": "../anyo-web-app"
+		}
+	],
+	"settings": {}
+}
