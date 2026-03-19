@@ -10,6 +10,8 @@ meta:
       - infra/gcp/k8s/base/api/
       - infra/gcp/terraform/stacks/gclb/
       - infra/gcp/terraform/stacks/monitoring/
+      - src/jobServer/agendaJobService.ts
+      - src/jobServer/AnyoOnDemandJob.ts
 
 state_yml_hygiene:
   purpose: >
@@ -135,10 +137,19 @@ tasks:
     title: "Apply balanced anyo-api memory request/limit sizing in repo manifests"
     repo: anyobackendapi
     status: completed
+  - id: A13
+    title: "Add route-level CPU/memory spike attribution (log-based metrics, dashboard widget, investigation runbook)"
+    repo: anyobackendapi
+    status: completed
+  - id: A14
+    title: "Add structured duration logging for agenda jobs and dashboard chart"
+    repo: anyobackendapi
+    status: in-progress
+    note: "Terraform metric + dashboard widget applied. Backend code changes (agendaJobService.ts, AnyoOnDemandJob.ts) need deploy to start populating data."
 
 progress:
   last_update: "2026-03-19"
-  last_agent: "OpenCode"
+  last_agent: "Claude Code"
   carryforward: []
   evidence:
     - "Jira created: APH-4412"
@@ -201,4 +212,8 @@ progress:
     - "HPA `AverageValue` lowered from 525m to 325m: 525m reacted too late causing 503s when pods were already saturated; 325m responds to moderate bursts with 105m headroom above normal load (220m avg); 225m rejected as too close to baseline (only 5m gap). The 60s scaleUp stabilization filters cold-start CPU spikes (p50 40s, p99 62s)."
     - "HPA manifest updated: `minReplicas: 3`, `averageValue: 325m`, `scaleDown.stabilizationWindowSeconds: 600`, scaleDown policy `Percent 25 / 300s` with `selectPolicy: Min`. ScaleUp unchanged (60s stabilization, 100% per 60s)."
     - "DRI-016, migration-state.yaml, and Confluence page 454950915 all updated to document the oscillation analysis, Utilization:60 rejection, 525m→325m rationale, and scaleDown tuning."
+    - "Route-level spike attribution: created 3 Cloud Logging log-based metrics in Terraform (`api_request_duration_ms`, `api_request_count`, `agenda_job_duration_ms`) and applied to prod; added 'Top Routes by Request Rate' stacked bar chart and 'Agenda Job Duration (p95)' line chart to the Anyo Backend Ops dashboard."
+    - "Removed standalone p95 latency and 5xx error rate dashboard widgets after determining they can't be correlated with CPU/memory charts; replaced with a single stacked bar for route traffic volume plus a ready-to-run investigation runbook at aph-4412/notes/route-spike-investigation-runbook.md with Logs Explorer filters and gcloud CLI queries for spike drill-down."
+    - "Fixed sign bug in AnyoOnDemandJob.ts (was `startTime - endTime`, yielding negative durations) and converted both AnyoOnDemandJob.ts and agendaJobService.ts `complete` handler to use structured `infoMeta()` logging with `event: job_complete`, `job_name`, and `duration_ms` fields — matching the existing `startup_complete` pattern used by the startup duration metric."
+    - "Agenda job duration metric (`agenda_job_duration_ms`) and dashboard widget are applied to prod infra but require a backend deploy to start populating data (the structured logging code changes are in src/jobServer/)."
   blocking_questions: []
