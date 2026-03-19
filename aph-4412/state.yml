@@ -12,6 +12,7 @@ meta:
       - infra/gcp/terraform/stacks/monitoring/
       - src/jobServer/agendaJobService.ts
       - src/jobServer/AnyoOnDemandJob.ts
+      - src/common/utils/logger.ts
 
 state_yml_hygiene:
   purpose: >
@@ -145,7 +146,12 @@ tasks:
     title: "Add structured duration logging for agenda jobs and dashboard chart"
     repo: anyobackendapi
     status: in-progress
-    note: "Terraform metric + dashboard widget applied. Backend code changes (agendaJobService.ts, AnyoOnDemandJob.ts) need deploy to start populating data."
+    note: "Terraform metric + dashboard widget applied. Backend code changes (agendaJobService.ts, AnyoOnDemandJob.ts, logger.ts) need deploy to start populating data."
+  - id: A15
+    title: "Fix route-level metrics: correct log field paths and add route normalization"
+    repo: anyobackendapi
+    status: in-progress
+    note: "Terraform metrics applied. Route normalization (routePattern in logger.ts) needs backend deploy."
 
 progress:
   last_update: "2026-03-19"
@@ -216,4 +222,8 @@ progress:
     - "Removed standalone p95 latency and 5xx error rate dashboard widgets after determining they can't be correlated with CPU/memory charts; replaced with a single stacked bar for route traffic volume plus a ready-to-run investigation runbook at aph-4412/notes/route-spike-investigation-runbook.md with Logs Explorer filters and gcloud CLI queries for spike drill-down."
     - "Fixed sign bug in AnyoOnDemandJob.ts (was `startTime - endTime`, yielding negative durations) and converted both AnyoOnDemandJob.ts and agendaJobService.ts `complete` handler to use structured `infoMeta()` logging with `event: job_complete`, `job_name`, and `duration_ms` fields — matching the existing `startup_complete` pattern used by the startup duration metric."
     - "Agenda job duration metric (`agenda_job_duration_ms`) and dashboard widget are applied to prod infra but require a backend deploy to start populating data (the structured logging code changes are in src/jobServer/)."
+    - "Fixed empty 'Top Routes by Request Rate' chart: express-winston logs had no `req.url` field (requestFilter only returned headers); the URL was in `jsonPayload.message` as 'HTTP GET /path'. Updated metric filters to match on `jsonPayload.message=~\"^HTTP \"` and extract method/route via REGEXP_EXTRACT."
+    - "Fixed high-cardinality route labels: added `routePattern` field to express-winston `dynamicMeta` in src/common/utils/logger.ts using Express's `req.route.path` (e.g. `/app/user/:id` instead of `/app/user/abc123`). Updated Terraform metric label extractors to use `EXTRACT(jsonPayload.routePattern)`. Requires backend deploy."
+    - "Fixed ts-node build error: `job.attrs.lastRunAt` doesn't exist on Agenda's `AgendaJobAttributes` type. Replaced with a `Map<string, number>` in agendaJobService.ts that tracks start times from the `start` event and computes duration in the `complete` event."
+    - "Removed duplicate duration logging from AnyoOnDemandJob.processJob() — the central start/complete event handlers in agendaJobService.ts cover both cron and on-demand jobs."
   blocking_questions: []
