@@ -131,9 +131,13 @@ tasks:
     title: "Apply the event-day HPA floor to the live cluster after final operator confirmation"
     repo: ops
     status: pending
+  - id: A12
+    title: "Apply balanced anyo-api memory request/limit sizing in repo manifests"
+    repo: anyobackendapi
+    status: completed
 
 progress:
-  last_update: "2026-03-18"
+  last_update: "2026-03-19"
   last_agent: "OpenCode"
   carryforward: []
   evidence:
@@ -188,5 +192,8 @@ progress:
     - "The Confluence DRI now explicitly states that API HPA uses `AverageValue` to keep autoscaling independent of future CPU request changes, adds a clarification section documenting why `averageUtilization: 60` on request `300m` would scale at `180m`, and records that any future return to utilization-based scaling requires a new explicit decision record with production validation."
     - "Local repo docs are now synced to the same clarification: docs/infra-migration/decisions/DRI-016-gke-workload-rightsizing-90d-production-baseline.md and docs/infra-migration/migration-state.yaml both reinforce that API autoscaling remains request-independent and that any return to utilization-based scaling requires a superseding decision with production validation."
     - "Current repo manifests still carry the earlier post-event utilization-based HPA proposal, so docs and ticket state now intentionally flag that proposal as needing explicit re-evaluation before rollout rather than treating it as approved policy."
+    - "Balanced API memory sizing was recorded in repo manifests at infra/gcp/k8s/base/api/deployment.yaml by reducing requests from `2560Mi` to `2048Mi` and limits from `3328Mi` to `3072Mi`, keeping CPU unchanged at `300m` request / `2000m` limit as a safer middle ground than the more aggressive VPA suggestion."
+    - "Migration docs were synced to the same decision: docs/infra-migration/decisions/DRI-016-gke-workload-rightsizing-90d-production-baseline.md now records the balanced API memory envelope (`2048Mi` request / `3072Mi` limit), and docs/infra-migration/migration-state.yaml captures it as an APH-4412 follow-up override to the earlier 90-day draft values."
+    - "Fresh verification after the memory change confirms the deployment diff only changes API memory request/limit; `kubectl kustomize infra/gcp/k8s/base/api` still fails for a pre-existing reason because infra/gcp/k8s/base/api/kustomization.yaml references `hpa.yaml` while the directory currently contains `hpa.example.yaml`."
   blocking_questions:
     - "Do we want to apply the event-day HPA floor live now, and if so should it be 12 replicas?"
