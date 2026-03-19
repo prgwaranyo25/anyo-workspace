@@ -158,6 +158,8 @@ decisions:
         avg_ms_7d: 1053
         p95_ms_7d: 3303
         p99_ms_7d: 6693
+  scope_exception_aph4430:
+    choice: "User requested POST /admin/experts/sessions/grid be tracked under APH-4418 as a child ticket despite the original app-only phase boundary."
   next_step:
     choice: "Create child tickets route by route from the prioritized candidate list, keeping shared observations only in APH-4418."
 
@@ -186,9 +188,23 @@ child_tickets:
     status: active
     notes:
       - "First route selected for deep investigation under the route-per-child strategy."
+  - jira: APH-4420
+    title: "Fix POST /app/bookAppointment latency — cache Calendar client + move notifications async"
+    route: "POST /app/bookAppointment"
+    bucket: "booking-session"
+    status: active
+    notes:
+      - "User requested deeper investigation before implementation after APH-4419."
+  - jira: APH-4430
+    title: "Diagnose and fix latency on POST /admin/experts/sessions/grid"
+    route: "POST /admin/experts/sessions/grid"
+    bucket: "scope-exception-admin-expert"
+    status: active
+    notes:
+      - "User requested this admin/expert route be tracked under APH-4418 as a scope exception."
 
 progress:
-  last_update: "2026-03-18"
+  last_update: "2026-03-19"
   last_agent: "OpenCode"
   carryforward: []
   evidence:
@@ -202,4 +218,12 @@ progress:
     - "Epic design changed from bucket-level child tickets to one-route-per-child delivery for production safety; shared route observations remain in aph-4418/."
     - "Epic-local instruction file now hands route diagnosis to the anyobackendapi-api-latency-diagnosis skill while keeping app-first scope, one-route-per-child delivery, and production-safety notes local to APH-4418."
     - "Created first child ticket APH-4419 for POST /app/bookAppointment and scaffolded aph-4418/aph-4419/."
+    - "Documented cross-route cache namespace latency pattern in aph-4418/notes/cache-namespace-latency-pattern.md using 24h/7d Sentry spans for USER_CACHE, PARTNER_CACHE, THERAPIST_CACHE, MASTER_DATA_CACHE, USER_SUBSCRIPTION_CACHE, LYFIS_MASTER_DATA_CACHE, and CIRCLE_PROFILE_GENERATION."
+    - "Confirmed cache keys are hash-tagged as {NAMESPACE}:key in anyobackendapi/src/common/anyoCache/anyoCacheService.ts, which pins each namespace to one Redis Cluster hash slot and explains namespace-isolated latency."
+    - "Found instrumentation gap: anyobackendapi/src/instrument.js cachePrefixes omit newer namespaces present in anyoCacheService.ts (including RHYTHM_RING_COPY_CACHE, RHYTHM_INSIGHTS_CACHE, SSO_EXCHANGE_CACHE, and SAML_SESSION_CACHE), so Sentry namespace coverage is incomplete."
+    - "Read-only GCP logs on anyo-infra / anyo-gke-autopilot-as1 show prod cache is in-cluster Valkey (`anyo-valkey-cache`), not managed Memorystore; sampled Valkey logs show normal operation and clean RDB saves rather than sustained saturation symptoms."
+    - "Correlated transient cache connection failures to a Valkey pod replacement window on 2026-03-17 around 15:10Z: old pod received SIGTERM and exited cleanly, new pod became ready around 18s later, and anyo-api / anyo-pubsub logged `SocketClosedUnexpectedlyError` from `@redis/client` during the cutover."
+    - "Recorded APH-4420 in the epic child-ticket list to keep epic state in sync with existing route work."
+    - "User requested a scope exception so POST /admin/experts/sessions/grid can be tracked under APH-4418 as APH-4430."
+    - "Created child ticket APH-4430 for POST /admin/experts/sessions/grid and scaffolded aph-4418/aph-4430/."
   blocking_questions: []

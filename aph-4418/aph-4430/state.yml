@@ -1,0 +1,101 @@
+meta:
+  jira: APH-4430
+  title: "Diagnose and fix latency on POST /admin/experts/sessions/grid"
+  created: "2026-03-19"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi:
+      - src/core/routes/index.ts
+      - src/core/handlers/therapist-portal-handler.ts
+      - src/core/handlers/app-handler.ts
+      - src/core/service/gridService/sesionGridService.ts
+      - src/core/service/partnerService.ts
+      - src/common/middleware/authMiddleware.ts
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  route_scope:
+    - "Route in scope: POST /admin/experts/sessions/grid"
+    - "User chose to track this admin/expert route under APH-4418 despite the epic's original app-only scope."
+    - "Investigate and implement a production-safe backend fix for this route only."
+  safety:
+    - "Prefer small, reversible backend changes."
+    - "Do not rely on a single slow trace."
+
+decisions:
+  parent_epic:
+    jira: APH-4418
+    title: "API latency reduction - app API inventory and prioritization"
+    note: "Tracked under this epic as a user-directed scope exception."
+  route_identity:
+    transaction: "POST /admin/experts/sessions/grid"
+    repo: "anyobackendapi"
+  current_diagnosis:
+    choice: "Shared session-grid backend processing appears to dominate tail latency."
+    evidence:
+      - "24h Sentry: 693 requests, avg ~4121ms, p95 ~10542ms, p99 ~21308ms."
+      - "7d Sentry: 3190 requests, avg ~5729ms, p95 ~14972ms, p99 ~22968ms."
+      - "Slow traces repeatedly show multi-second db find/getMore spans, plus secondary partner-cache reads."
+      - "Code path shows sequential aggregate, count, mapping, and filter-generation work in sesionGridService.ts."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4430"
+      pr: "TBD"
+
+tasks:
+  - id: 1
+    title: "Document route-specific diagnosis and confirm minimal fix scope"
+    status: completed
+  - id: 2
+    title: "Design the smallest backend change to remove dominant session-grid latency"
+    status: completed
+  - id: 3
+    title: "Implement the approved backend fix in anyobackendapi"
+    status: completed
+  - id: 4
+    title: "Run targeted verification and capture rollout notes"
+    status: completed
+
+progress:
+  last_update: "2026-03-19"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Jira child ticket created and linked under APH-4418: APH-4430."
+    - "Scaffolded aph-4418/aph-4430/ from _template."
+    - "Exact route verified in anyobackendapi/src/core/routes/index.ts as POST /admin/experts/sessions/grid via therapistPortalSessionsGridPostHandler."
+    - "Expert portal request shape is therapist-scoped with pageSize=10 in anyoexpertportal/src/app/(protected)/sessions/page.tsx."
+    - "Initial code review points to sesionGridService.ts as the main latency source: aggregate + count + map + filterOptions run sequentially."
+    - "Slow traces repeatedly show multi-second db find/getMore spans and occasional PARTNER_CACHE latency."
+    - "Implemented expert-route options so therapistPortalSessionsGridPostHandler skips filterOptions and noShowSessionsCount work for POST /admin/experts/sessions/grid."
+    - "Scoped therapy plan and pack subscription reads in sesionGridService.ts to only the subscription IDs present on the current page."
+    - "Batched partner detail lookup by unique partnerId per page instead of repeated per-row partner cache calls."
+    - "Verified locally with pnpm lint:check:file on sesionGridService.ts, therapist-portal-handler.ts, app-handler.ts, and pnpm exec tsc --noEmit."
+    - "Refactored session grid bulk data fetches into one helper function (loadSessionGridBulkDataMaps) that returns precomputed maps used during response mapping."
+    - "Replaced getUniqueObjectIds usage with lodash uniqBy-based ObjectId/string dedupe in the session grid bulk-loader path."
+    - "Diff vs origin/main on anyobackendapi/aph-4430 is currently one file: src/core/service/gridService/sesionGridService.ts (+277/-166)."
+    - "Posted Jira update on APH-4430 with diff-from-main details as comment id 28146 (2026-03-19T17:12:46.601+0530)."
+    - "Posted corrected Jira solution comment on APH-4430 (comment id 28147, 2026-03-19T17:18:22.753+0530) covering implemented changes, reasoning, and expected impact."
+    - "Estimated pre-deploy improvement documented in Jira: avg ~20-35%, p95 ~35-55%, p99 ~15-30%, with explicit 24h baseline-to-target translation."
+  blocking_questions: []
