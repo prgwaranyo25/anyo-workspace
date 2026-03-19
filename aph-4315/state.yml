@@ -29,7 +29,7 @@ constraints:
 decisions:
   dataset_id: billing_export
   dataset_location: asia-south1
-  backend_bucket: anyo-tfstate-dev
+  backend_bucket: anyo-tfstate-prod
   backend_prefix: billing-export
   stack_is_standalone: "Not part of setup-anyo-infra.sh CORE/POST phases — run directly"
 
