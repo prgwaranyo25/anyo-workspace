@@ -1,0 +1,84 @@
+meta:
+  jira: APH-4431
+  title: "Record cache latency and connection-reset observations for partner cache behavior"
+  created: "2026-03-19"
+  status: active
+  owners:
+    - pragadeesh
+  repos_and_paths:
+    anyobackendapi:
+      - src/common/anyoCache/anyoCacheService.ts
+      - src/common/middleware/authMiddleware.ts
+      - src/core/routes/index.ts
+      - src/core/handlers/user-handlers.ts
+      - src/core/service/partnerService.ts
+      - src/core/service/gridService/sesionGridService.ts
+      - src/instrument.js
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  scope:
+    - "This child ticket records cache-specific observations only; no backend code changes are in scope yet."
+    - "Keep shared cross-route cache findings aligned with APH-4418 while storing ticket-local cache notes here."
+    - "No secrets or production credentials may be stored in notes or state."
+  investigation_policy:
+    - "Separate steady-state cache latency skew from transient cache connection-reset events."
+    - "Do not infer cache saturation from latency alone; prefer Sentry plus read-only GCP evidence."
+
+decisions:
+  parent_epic:
+    jira: APH-4418
+    title: "API latency reduction - app API inventory and prioritization"
+    note: "Tracked under the epic as a cache-observations child ticket."
+  current_position:
+    choice: "Observed partner-cache slowness is primarily request-shape dependent rather than explained by Valkey saturation."
+    evidence:
+      - "The same PARTNER_CACHE key is fast in GET /getUserByEmail but much slower in grid/list routes."
+      - "Sentry shows repeated same-key partner-cache reads within single slow traces."
+      - "GCP logs show transient SocketClosedUnexpectedlyError events during a Valkey pod replacement window."
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi:
+      base: "origin/main"
+      branch: "aph-4431"
+      pr: "TBD"
+
+tasks:
+  - id: 1
+    title: "Record existing cache namespace and partner-cache observations"
+    status: completed
+  - id: 2
+    title: "Separate steady-state latency observations from transient connection-reset events"
+    status: completed
+  - id: 3
+    title: "Keep child ticket ready for deeper partner-cache diagnosis if requested"
+    status: pending
+
+progress:
+  last_update: "2026-03-19"
+  last_agent: "OpenCode"
+  carryforward: []
+  evidence:
+    - "Scaffolded aph-4418/aph-4431/ from _template as a child ticket under APH-4418."
+    - "Recorded cache-specific notes in aph-4418/aph-4431/notes/cache-observations.md."
+    - "Captured code-level evidence that PARTNER_CACHE reads happen through getPartnerDetailsByPartnerId() and can be repeated during session-grid row mapping."
+    - "Captured Sentry evidence that the same key GET PARTNER_CACHE::{PARTNER_CACHE}:id:PR-9008 is fast in GET /getUserByEmail but much slower in POST /admin/experts/sessions/grid and POST /app/circles/grid/post."
+    - "Captured read-only GCP evidence that SocketClosedUnexpectedlyError events aligned with a Valkey pod replacement window, supporting a separate transient availability/cutover issue."
+  blocking_questions: []

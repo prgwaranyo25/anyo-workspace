@@ -202,6 +202,13 @@ child_tickets:
     status: active
     notes:
       - "User requested this admin/expert route be tracked under APH-4418 as a scope exception."
+  - jira: APH-4431
+    title: "Record cache latency and connection-reset observations for partner cache behavior"
+    route: "cross-route cache observations"
+    bucket: "shared-cache-observations"
+    status: active
+    notes:
+      - "Child ticket created to centralize partner-cache latency, namespace-skew, and connection-reset findings."
 
 progress:
   last_update: "2026-03-19"
@@ -223,6 +230,7 @@ progress:
     - "Found instrumentation gap: anyobackendapi/src/instrument.js cachePrefixes omit newer namespaces present in anyoCacheService.ts (including RHYTHM_RING_COPY_CACHE, RHYTHM_INSIGHTS_CACHE, SSO_EXCHANGE_CACHE, and SAML_SESSION_CACHE), so Sentry namespace coverage is incomplete."
     - "Read-only GCP logs on anyo-infra / anyo-gke-autopilot-as1 show prod cache is in-cluster Valkey (`anyo-valkey-cache`), not managed Memorystore; sampled Valkey logs show normal operation and clean RDB saves rather than sustained saturation symptoms."
     - "Correlated transient cache connection failures to a Valkey pod replacement window on 2026-03-17 around 15:10Z: old pod received SIGTERM and exited cleanly, new pod became ready around 18s later, and anyo-api / anyo-pubsub logged `SocketClosedUnexpectedlyError` from `@redis/client` during the cutover."
+    - "Created child ticket APH-4431 under APH-4418 to track cache-specific observations separately from route implementation tickets."
     - "Recorded APH-4420 in the epic child-ticket list to keep epic state in sync with existing route work."
     - "User requested a scope exception so POST /admin/experts/sessions/grid can be tracked under APH-4418 as APH-4430."
     - "Created child ticket APH-4430 for POST /admin/experts/sessions/grid and scaffolded aph-4418/aph-4430/."
