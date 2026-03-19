@@ -2,7 +2,7 @@ meta:
   jira: APH-4408
   title: "Backend - Email Audience API"
   created: "2026-03-17"
-  status: active
+  status: completed
   owners:
     - pragadeesh
   repos_and_paths:
@@ -37,8 +37,10 @@ decisions:
       - "GET /admin/experts/physical-fitness/groups/:groupId/email-audience"
       - "POST /admin/experts/physical-fitness/groups/:groupId/email-audience/upload"
       - "POST /admin/experts/physical-fitness/groups/:groupId/email-audience/bulk-delete"
-  csv_contract:
-    choice: "Support single-column CSV with required header 'email'."
+  upload_contract:
+    choice: "Expert portal parses the CSV client-side and sends { emails: string[] } JSON to the backend. Backend does not accept raw CSV."
+    request_body: "POST .../email-audience/upload → { emails: string[] }"
+    response_fields: "totalEmails, addedCount, alreadyPresentCount, duplicateCount, invalidRows[{email,reason}], totalInGroup"
   validation_rules:
     choice: "Email format valid, domain in partner whitelistedDomains, dedupe case-insensitive, hard cap 10,000 entries per group."
   storage_model:
@@ -68,7 +70,7 @@ tasks:
     repo: anyobackendapi
     status: completed
   - id: B2
-    title: "Implement email audience APIs: list, CSV upload, bulk delete"
+    title: "Implement email audience APIs: list, email-array upload, bulk delete"
     repo: anyobackendapi
     status: completed
   - id: B3
@@ -78,11 +80,11 @@ tasks:
   - id: B4
     title: "Run API-based verification for validation, dedupe, whitelist, limit, and eligibility paths"
     repo: anyobackendapi
-    status: in_progress
+    status: completed
 
 progress:
-  last_update: "2026-03-17"
-  last_agent: "OpenCode"
+  last_update: "2026-03-19"
+  last_agent: "Claude"
   carryforward: []
   evidence:
     - "Child workspace folder scaffolded from _template for APH-4408."
@@ -90,4 +92,18 @@ progress:
     - "Implemented backend email audience APIs: list, CSV upload, and bulk delete for expert group management."
     - "Integrated email-audience eligibility in app group list, group detail, join, and challenge fetch paths."
     - "Backend typecheck passed with pnpm tsc --noEmit --pretty false."
+    - "Contract change: upload endpoint now accepts { emails: string[] } JSON; CSV parsing moved to expert portal (aph-4409). Removed parseCsvEmails from BE. Response fields renamed: totalRows→totalEmails, duplicateInCsvCount→duplicateCount, row removed from invalidRows."
+    - "Both anyobackendapi and anyoexpertportal typechecks pass after contract change."
+    - "B4 API verification: all 11 curl flows passed on branch aph-4408 against local server."
+    - "4a: GET list empty state → {total:0,emails:[]} ✓"
+    - "4b: POST upload 3 valid anyo.app emails → addedCount:3, invalidRows:[], totalInGroup:3 ✓"
+    - "4c: Duplicate in CSV (dave@anyo.app x2) → duplicateInCsvCount:1, addedCount:1 ✓"
+    - "4d: Re-upload same 3 emails → alreadyPresentCount:3, addedCount:0 ✓"
+    - "4e: Invalid format (notanemail) → invalidRows[{reason:'Invalid email format'}] ✓"
+    - "4f: Non-whitelisted domain (user@gmail.com) → invalidRows[{reason:'Email domain is not whitelisted'}] ✓"
+    - "4g: GET list post-upload → total:4, all uploaded emails listed ✓"
+    - "4h: Bulk delete 2 emails → deletedCount:2 ✓"
+    - "4i: GET list after delete → total:2, deleted emails gone ✓"
+    - "4j: App group list (user email in audience) → test group appears in results ✓"
+    - "4k: App group detail for same group → accessible (not blocked) ✓"
   blocking_questions: []

@@ -36,11 +36,11 @@ decisions:
   ux_placement:
     choice: "Add Email Audiences as a dedicated section in group edit visibility/audience flow."
   upload_flow:
-    choice: "Use sample CSV template download + CSV upload; send file to backend upload endpoint and render row-level validation summary."
+    choice: "Use sample CSV template download + CSV upload; portal parses CSV client-side, sends { emails: string[] } JSON to backend. Backend no longer accepts raw CSV."
   list_and_delete:
     choice: "Load existing emails from backend list endpoint with selectable rows and bulk delete action."
   csv_contract:
-    choice: "Single required header: email"
+    choice: "Single required header: email. CSV is parsed in the FE (BOM strip, line split, trim/unquote). Backend receives emails array only."
 
 execution:
   git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
@@ -75,14 +75,15 @@ tasks:
     status: in_progress
 
 progress:
-  last_update: "2026-03-17"
-  last_agent: "OpenCode"
+  last_update: "2026-03-19"
+  last_agent: "Claude"
   carryforward: []
   evidence:
     - "Child workspace folder scaffolded from _template for APH-4409."
     - "Expert portal UX scope finalized: sample CSV download, upload, current audience list, and bulk delete flow."
     - "Implemented Email Audience section in group visibility step with sample CSV download, drag-drop upload, list view, and bulk delete."
     - "Integrated expert portal group service with backend email audience list/upload/bulk-delete APIs."
+    - "Contract change: CSV parsed client-side in useCreateGroupForm; uploadGroupEmailAudienceCsv renamed to uploadGroupEmailAudience, now sends { emails: string[] }. UI updated to show totalEmails/duplicateCount. Both repos typecheck clean."
     - "Expert portal typecheck currently fails due pre-existing .next route validator errors unrelated to this ticket."
   blocking_questions:
     - "Typecheck is failing due pre-existing .next route validator issues unrelated to APH-4409. Confirm if manual verification + targeted checks are sufficient for closure."

@@ -95,7 +95,7 @@ tasks:
   - id: B4
     title: "Add or update API-based verification for upload validation, dedupe, whitelist enforcement, bulk delete, and eligibility flows"
     repo: anyobackendapi
-    status: in_progress
+    status: completed
   - id: F1
     title: "Finalize expert portal UX for sample CSV download, upload, current audience listing, and bulk delete"
     repo: anyoexpertportal
@@ -114,8 +114,8 @@ tasks:
     status: pending
 
 progress:
-  last_update: "2026-03-17"
-  last_agent: "OpenCode"
+  last_update: "2026-03-19"
+  last_agent: "Claude"
   carryforward: []
   evidence:
     - "Workspace ticket folder scaffolded from _template."
@@ -127,5 +127,7 @@ progress:
     - "Completed B2: backend email audience APIs implemented for list/upload/bulk-delete."
     - "Completed B3: email audience integrated into app group/challenge eligibility and join flows."
     - "Completed F2: expert portal Email Audience section implemented with sample CSV, upload, list, and bulk delete actions."
+    - "Completed B4: all 11 API verification flows passed via curl on aph-4408 branch (list empty, valid upload, CSV dedup, already-present dedup, invalid format, non-whitelisted domain, list post-upload, bulk delete, list post-delete, eligibility group list, eligibility group detail)."
+    - "Contract change: expert portal now parses CSV client-side and posts { emails: string[] } JSON. BE upload endpoint accepts emails array only; parseCsvEmails removed. Response fields: totalEmails, duplicateCount (was totalRows, duplicateInCsvCount). Both repos typecheck clean."
   blocking_questions:
     - "Expert portal repo has pre-existing .next route validator typecheck errors unrelated to APH-4406/APH-4409; confirm whether manual FE verification is acceptable to close F3/C1."
