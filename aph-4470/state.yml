@@ -1,0 +1,108 @@
+meta:
+  jira: APH-4470
+  title: "Expert Onboarding Improvements: New Fields, Admin Approval Pipeline & Expert Portal UX"
+  created: "2026-03-20"
+  status: active
+  owners: []
+  repos_and_paths:
+    anyoexpertportal: "../anyoexpertportal"
+    anyobackendapi: "../anyobackendapi"
+    anyo-portal: "../anyo-portal"
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  no_tdd: true
+  verification: "manual verification + agent-browser MCP for UI testing"
+  no_worktree: true
+  code_quality: "high — no shortcuts"
+
+decisions:
+  approach: >
+    Phase 1: deconstruct and document the current onboarding flow across all three repos.
+    Phase 2: scope sub-tickets per milestone.
+    Phase 3: implement per scoped tickets.
+  testing_approach: >
+    Start server + expert portal locally and use agent-browser MCP for UI verification.
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Manual verification via agent-browser MCP. Start server and expert portal to verify UI."
+  branch_plan:
+    anyoexpertportal: "aph-4470"
+    anyobackendapi: "aph-4470"
+    anyo-portal: "aph-4470"
+
+tasks:
+  - id: T1
+    title: "Deconstruct onboarding flow in anyoexpertportal"
+    status: completed
+    notes: "See notes/onboarding-flow-deconstruction.md"
+
+  - id: T2
+    title: "Deconstruct onboarding flow in anyobackendapi"
+    status: completed
+    notes: "See notes/onboarding-flow-deconstruction.md"
+
+  - id: T3
+    title: "Deconstruct admin approval flow in anyo-portal"
+    status: completed
+    notes: "See notes/onboarding-flow-deconstruction.md"
+
+  - id: T4
+    title: "Scope sub-tickets for each milestone"
+    status: completed
+    notes: "Scoped into T5-T7 below"
+
+  - id: T5
+    title: "Implement: New onboarding fields (Residential Address, Testimonials, Preferred Workshop Domain)"
+    status: completed
+    notes: >
+      ResidentialAddress = new step between BankDetails and Contract (all expert types).
+      Testimonials = inside ExpertProfileCreationForm with tooltip (THERAPIST only).
+      Preferred Workshop Domain = relabeled eventsCategories.userSuggested in admin panel Step 7.
+      tsc clean: anyoexpertportal, anyobackendapi, anyo-portal (pre-existing errors in unrelated files only).
+      UI verified via agent-browser: step order Bank Details → Residential Address → Contract confirmed;
+      Testimonials tooltip working with correct text; profile view shows both new fields with data.
+      Bug fix: EDIT buttons added for Testimonials and Residential Address in profile view.
+      Bug fix: onboardingDataToStoreMapper now populates testimonials + residentialAddress into store
+      so edit pages pre-fill correctly.
+      Screenshots saved to notes/screenshots/ (15 screenshots).
+
+  - id: T6
+    title: "Implement: Admin approval pipeline improvements"
+    status: pending
+    notes: "anyo-portal"
+
+  - id: T7
+    title: "Implement: Expert portal onboarding UX improvements"
+    status: pending
+    notes: "anyoexpertportal — audit and improve overall experience"
+
+progress:
+  last_update: "2026-03-20"
+  last_agent: "claude-sonnet-4-6"
+  carryforward:
+    - "T6 (admin approval pipeline) and T7 (expert portal UX) pending — scope as child tickets"
+  evidence:
+    - "T5 fully verified: Bank Details → Residential Address → Contract step order confirmed in browser"
+    - "T5: Testimonials tooltip showing 'A testimonial is a formal statement...' text verified in browser"
+    - "T5: Profile view displays both Testimonials and Residential Address with EDIT buttons"
+    - "T5: onboardingDataToStoreMapper patched to populate testimonials + residentialAddress into store"
+    - "T5: Edit pages edit_residential_address and edit_testimonials added to [pageName]/page.tsx"
+    - "T5: MongoDB confirmed residentialAddress and testimonials stored correctly in expertOnboardRequests"
+    - "15 screenshots saved in notes/screenshots/"
+  blocking_questions: []
