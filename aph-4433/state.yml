@@ -1,0 +1,118 @@
+meta:
+  jira: APH-4433
+  title: "Bug: Profile name is already existing error fires incorrectly on Circles profile update"
+  created: "2026-03-20"
+  status: active
+  owners: [pragadeesh]
+  repos_and_paths:
+    anyobackendapi:
+      - src/anyo-circles/handlers/app-handler.ts
+      - src/anyo-circles/service/circleService.ts
+      - src/common/services/anyoLLMService/llmPromptTemplates.ts
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints: {}
+
+decisions:
+  root_cause_confirmed: >
+    Not a validation logic bug in appUpdateUserCircleProfilePostHandler.
+    The real cause is LLM vocabulary exhaustion — the name pool is saturated.
+    The handler suggests names that are already taken in the DB, so users
+    naturally hit the uniqueness check when they try to save them.
+  keep_existing_names_in_prompt: >
+    Removing EXISTING_NAMES from the LLM prompt was tried and reverted.
+    Without it the LLM gravitates to the same popular names every call.
+    The DB check in the handler is the truth gate but the prompt hint reduces
+    collisions at source.
+  generate_50_per_call: >
+    Increased from 3 to 50 names per LLM call. Larger batch means each
+    iteration yields more unique candidates, reducing iterations needed.
+  existing_names_window_1000: >
+    Increased from 100 to 1000 names passed to LLM. As user base grows
+    the LLM needs broader context to avoid taken names.
+  handler_accumulate_not_replace: >
+    Handler now accumulates safe names across iterations instead of replacing
+    the whole batch. Taken names are filtered out surgically per iteration.
+    Loop runs up to 8 times instead of 5, collecting names until 3 are found.
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi: "aph-4433 from origin/main"
+
+tasks:
+  - id: T1
+    title: "Investigate root cause"
+    status: done
+    notes: >
+      Root cause is LLM vocabulary exhaustion + handler returning conflicting
+      names after retry exhaustion. The updateProfile handler validation itself
+      is correct.
+
+  - id: T2
+    title: "Fix handler loop — accumulate unique names, never return conflicting ones"
+    status: done
+    notes: >
+      app-handler.ts: Loop now accumulates safe names across up to 8 iterations.
+      Each iteration: DB-check the batch, filter taken names surgically, add
+      remaining to safeNames. Returns only confirmed-unique names.
+
+  - id: T3
+    title: "Increase LLM batch size 3→50 and existingNames window 100→1000"
+    status: done
+    notes: >
+      llmPromptTemplates.ts: Generate 50 instead of 3.
+      circleService.ts: .limit(1000) instead of .limit(100).
+      EXISTING_NAMES param and post-filter restored (removal was tried and reverted).
+
+  - id: T4
+    title: "Smoke test via server"
+    status: done
+    notes: >
+      GET /app/circles/generateProfileName → HTTP 200.
+      49 unique names returned in a single LLM call, no retry loop needed.
+      Test user: prgwar@gmail.com on port 8080.
+
+progress:
+  last_update: "2026-03-20"
+  last_agent: "claude"
+  carryforward: []
+  evidence:
+    - "pnpm tsc --noEmit exits 0 — no type errors after all changes"
+    - "Branch aph-4433 active in anyobackendapi"
+    - "GET /app/circles/generateProfileName → HTTP 200, 49 unique names returned in one shot"
+  blocking_questions: []
+
+observations:
+  handler: "appUpdateUserCircleProfilePostHandler in src/anyo-circles/handlers/app-handler.ts"
+  generate_handler: "appGenerateCircleUserProfilesNameGetHandler in src/anyo-circles/handlers/app-handler.ts"
+  error_message: "Profile name ${reqBody.profileName} is already existing, please try something different"
+  error_type: "ValidationException"
+  logic_summary: |
+    Generator (broken before fix):
+    1. Called generateCircleProfileNames (LLM) — generated only 3 names per call
+    2. DB-checked the batch — if ANY conflict, discarded ALL 3 names
+    3. Retried up to 5 times — after 5 fails, returned whatever was last generated (still conflicting)
+    4. User picks a name from the list → hits updateProfile → ValidationException
+
+    Generator (after fix):
+    1. Calls generateCircleProfileNames (LLM) — now generates 50 names per call
+    2. LLM is given last 1000 taken names to avoid (was 100)
+    3. DB-checks batch, filters out taken names, accumulates safe ones
+    4. Loops up to 8 times until 3+ safe names collected
+    5. Only confirmed-unique names returned to client
