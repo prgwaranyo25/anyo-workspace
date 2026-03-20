@@ -1,0 +1,70 @@
+meta:
+  jira: APH-4439
+  title: "Expert portal UI switch for PERIOD_FROM_CHALLENGE_START tag on challenge create/edit"
+  created: "2026-03-20"
+  status: active
+  owners: []
+  repos_and_paths:
+    anyoexpertportal:
+      - src/models/groups/AnyoStepsAllChallengeResponse.ts
+      - src/hooks/groups/useCreateChallengeForm.ts
+    anyobackendapi:
+      - src/core/models/groupsChallanges/AnyoGroupsChallenge.ts
+      - src/core/service/groupChallenges/anyoGroupsChallengeService.ts
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints: {}
+
+decisions:
+  backend_branch: >
+    Backend changes (AnyoGroupsChallengeRequest interface + createBaseChallenge mapping)
+    go on the aph-4438 branch in anyobackendapi, not a separate branch.
+  request_shape: >
+    A new boolean field `periodFromChallengeStart` is added to AnyoGroupsChallengeRequest.
+    The backend maps it to ChallengeTags.PERIOD_FROM_CHALLENGE_START, consistent with how
+    isTesting and showLeaderBoard are handled.
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyoexpertportal: aph-4439
+    anyobackendapi: aph-4438
+
+tasks:
+  - id: T1
+    title: "Add PERIOD_FROM_CHALLENGE_START to ChallengeTags enum in AnyoStepsAllChallengeResponse.ts"
+    status: completed
+  - id: T2
+    title: "Add periodFromChallengeStart state + renderSwitch entry in useCreateChallengeForm.ts"
+    status: completed
+  - id: T3
+    title: "Include periodFromChallengeStart in create/edit request payload"
+    status: completed
+  - id: T4
+    title: "Populate toggle from existing challenge data on edit"
+    status: completed
+  - id: T5
+    title: "Backend (aph-4438): add periodFromChallengeStart to AnyoGroupsChallengeRequest and map to tag in createBaseChallenge + edit endpoint"
+    status: completed
+
+progress:
+  last_update: "2026-03-20"
+  last_agent: "claude-sonnet-4-6"
+  carryforward: []
+  evidence: []
+  blocking_questions: []

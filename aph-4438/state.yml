@@ -1,0 +1,64 @@
+meta:
+  jira: APH-4438
+  title: "Add PERIOD_FROM_CHALLENGE_START challenge tag to support full-period scoring for late joiners"
+  created: "2026-03-20"
+  status: active
+  owners: []
+  repos_and_paths:
+    anyobackendapi:
+      - src/core/models/groupsChallanges/AnyoGroupsChallenge.ts
+      - src/core/service/groupChallenges/anyoGroupsChallengeService.ts
+      - src/jobServer/Jobs/StampChallengeGoalsCompletedJob.ts
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints: {}
+
+decisions:
+  effectiveStart_tag_semantics: >
+    When PERIOD_FROM_CHALLENGE_START tag is present, effectiveStart = challengeStartDate
+    (the very beginning of the entire challenge), not periodStart. This gives late joiners
+    a scoring window from day 1 of the challenge regardless of when they joined.
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi: aph-4438
+
+tasks:
+  - id: T1
+    title: "Add PERIOD_FROM_CHALLENGE_START to ChallengeTags enum in AnyoGroupsChallenge.ts"
+    status: completed
+  - id: T2
+    title: "Add challengeTags param to getActiveChallengePeriodForUser and branch effectiveStart on tag"
+    status: completed
+  - id: T3
+    title: "Update call site in addStepGoalCompleted (anyoGroupsChallengeService.ts) to pass challengeTags"
+    status: completed
+  - id: T4
+    title: "Update call site in StampChallengeGoalsCompletedJob.ts to pass challengeTags"
+    status: completed
+  - id: T5
+    title: "Add periodFromChallengeStart to AnyoGroupsChallengeRequest and map to tag in createBaseChallenge + edit endpoint (for APH-4439)"
+    status: completed
+
+progress:
+  last_update: "2026-03-20"
+  last_agent: "claude-sonnet-4-6"
+  carryforward: []
+  evidence: []
+  blocking_questions: []
