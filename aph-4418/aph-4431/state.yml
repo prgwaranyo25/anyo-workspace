@@ -40,11 +40,13 @@ decisions:
     title: "API latency reduction - app API inventory and prioritization"
     note: "Tracked under the epic as a cache-observations child ticket."
   current_position:
-    choice: "Observed partner-cache slowness is primarily request-shape dependent rather than explained by Valkey saturation."
+    choice: "Observed partner-cache slowness is primarily request-shape dependent rather than explained by Valkey saturation; separate Sentry `ping` db spans come from an explicit Mongo pre-transaction health check in the shared DB wrapper."
     evidence:
       - "The same PARTNER_CACHE key is fast in GET /getUserByEmail but much slower in grid/list routes."
       - "Sentry shows repeated same-key partner-cache reads within single slow traces."
       - "GCP logs show transient SocketClosedUnexpectedlyError events during a Valkey pod replacement window."
+      - "anyobackendapi/src/common/services/db.ts calls `await client.db(ANYO_DB).admin().ping()` inside `withTransaction()` before `session.startSession()`, so transaction-backed code paths add a real Mongo ping span before work begins."
+      - "Sentry production spans for `span.description:{\"ping\":{\"value\":\"?\"}}` show the ping spans are widespread across routes rather than isolated to one endpoint."
 
 execution:
   git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
@@ -81,4 +83,6 @@ progress:
     - "Captured code-level evidence that PARTNER_CACHE reads happen through getPartnerDetailsByPartnerId() and can be repeated during session-grid row mapping."
     - "Captured Sentry evidence that the same key GET PARTNER_CACHE::{PARTNER_CACHE}:id:PR-9008 is fast in GET /getUserByEmail but much slower in POST /admin/experts/sessions/grid and POST /app/circles/grid/post."
     - "Captured read-only GCP evidence that SocketClosedUnexpectedlyError events aligned with a Valkey pod replacement window, supporting a separate transient availability/cutover issue."
+    - "Confirmed `anyobackendapi/src/common/services/db.ts` adds `await client.db(ANYO_DB).admin().ping()` in `withTransaction()` before starting a session, which explains recurring Sentry db spans with description `{\"ping\":{\"value\":\"?\"}}`."
+    - "Queried Sentry prod spans for `span.description:{\"ping\":{\"value\":\"?\"}}`: 127,505 ping spans in 24h with avg 32.6ms / p95 130ms / p99 390.9ms; high-volume routes include POST /app/forums/v2/grid (26,877 spans, avg 26.6ms) and GET /admin/expert/therapist-chat (4,522 spans, avg 133ms)."
   blocking_questions: []
