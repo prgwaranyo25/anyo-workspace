@@ -1,0 +1,64 @@
+meta:
+  jira: APH-4372
+  title: "Eliminate duplicate bulkWrite logic in HealthMetricService"
+  created: "2026-03-20"
+  status: active
+  owners: []
+  repos_and_paths:
+    anyobackendapi:
+      - src/core/service/healthMetrics/HealthMetricService.ts
+
+state_yml_hygiene:
+  purpose: >
+    Single source of truth. Keep accurate, minimal, actionable.
+  rules:
+    - "After meaningful changes, update progress.last_update and progress.last_agent."
+    - "Never store secrets/tokens/private keys."
+    - "Never store PII. Use placeholders."
+    - "If blocked: set task status=blocked, add to progress.blocking_questions."
+    - "When completed: add brief evidence to progress.evidence."
+
+constraints:
+  - "No major structural changes — minimal, safe refactor only."
+  - "Do not alter the external API of any public method."
+  - "No new tests unless explicitly requested."
+
+decisions:
+  approach: >
+    Extract a protected executeBulkWrite(collection, operations) helper method
+    that encapsulates the chunk + loop + bulkWrite + catch pattern shared by
+    upsertMetricsV2 and upsertRawMetrics (and deprecated upsertMetrics).
+    upsertRawMetrics currently does not chunk; after extraction it will also
+    benefit from chunking automatically.
+
+execution:
+  git_layout: "multi-repo (each folder is its own git repo; workspace root is not a git repo)"
+  development_guidelines:
+    testing_policy:
+      tdd: false
+      note: "Do NOT follow TDD. Add/modify tests only when explicitly requested."
+    verification_policy:
+      note: "Prefer manual verification with targeted lint/typecheck only when stable."
+  branch_plan:
+    anyobackendapi: aph-4372
+
+tasks:
+  - id: T1
+    title: "Extract protected executeBulkWrite helper in HealthMetricService"
+    status: pending
+  - id: T2
+    title: "Refactor upsertMetricsV2 to use executeBulkWrite"
+    status: pending
+  - id: T3
+    title: "Refactor upsertRawMetrics to use executeBulkWrite"
+    status: pending
+  - id: T4
+    title: "Refactor deprecated upsertMetrics to use executeBulkWrite"
+    status: pending
+
+progress:
+  last_update: "2026-03-20"
+  last_agent: "claude-sonnet-4-6"
+  carryforward: []
+  evidence: []
+  blocking_questions: []
